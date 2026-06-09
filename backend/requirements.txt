@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pydantic==2.10.3
+python-multipart==0.0.19
+aiofiles==24.1.0
+yt-dlp==2024.12.13
+pydub==0.25.1
+librosa==0.10.2.post1
+demucs==4.0.1
+soundfile==0.12.1
+numpy==1.26.4
+websockets==14.1
+mutagen==1.47.0
+psycopg2-binary==2.9.9

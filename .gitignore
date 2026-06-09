@@ -1,0 +1,29 @@
+# Storage (runtime data)
+storage/songs/
+storage/stems/
+storage/edits/
+storage/db/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+
+# OS
+.DS_Store
+Thumbs.db
