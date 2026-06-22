@@ -27,6 +27,7 @@ function timeAgo(dateStr: string): string {
 
 export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplicate }: SessionDetailProps) {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
+  const [activeFolder, setActiveFolder] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,6 +51,34 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
   const handleDeleteNote = async (noteId: number) => {
     try {
       await api.deleteNote(session.id, noteId, password);
+      onUpdate();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleCreateFolder = async (name: string, color: string) => {
+    try {
+      await api.createSessionFolder(session.id, { name, color }, password);
+      onUpdate();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleDeleteFolder = async (folderId: number) => {
+    try {
+      await api.deleteSessionFolder(session.id, folderId, password);
+      if (activeFolder === folderId) setActiveFolder(null);
+      onUpdate();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRenameFolder = async (folderId: number, name: string, color: string) => {
+    try {
+      await api.updateSessionFolder(session.id, folderId, { name, color }, password);
       onUpdate();
     } catch {
       // ignore
@@ -133,6 +162,12 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
             sessionId={session.id}
             password={password}
             onUpdate={onUpdate}
+            folders={session.folders || []}
+            activeFolder={activeFolder}
+            onFolderChange={setActiveFolder}
+            onCreateFolder={handleCreateFolder}
+            onDeleteFolder={handleDeleteFolder}
+            onRenameFolder={handleRenameFolder}
           />
         ) : activeTab === 'notes' ? (
           <div className="h-full overflow-y-auto p-3">

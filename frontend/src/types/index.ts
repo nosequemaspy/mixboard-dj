@@ -141,6 +141,14 @@ export interface SessionNote {
   created_at: string;
 }
 
+export interface SessionFolder {
+  id: number;
+  session_id: number;
+  name: string;
+  color: string;
+  position: number;
+}
+
 export interface SessionData {
   id: number;
   name: string;
@@ -152,6 +160,7 @@ export interface SessionData {
   created_at: string;
   updated_at: string;
   items: SessionItem[];
+  folders: SessionFolder[];
   suggestions: Suggestion[];
   notes: SessionNote[];
 }
@@ -161,6 +170,8 @@ export interface SessionItem {
   session_id: number;
   song_id: number;
   position: number;
+  folder_id: number | null;
+  folder_position: number | null;
   is_played: boolean;
   played_at: string | null;
   added_by: string;

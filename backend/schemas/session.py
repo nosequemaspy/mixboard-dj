@@ -31,11 +31,33 @@ class SessionVerify(BaseModel):
     password: str
 
 
+class SessionFolderCreate(BaseModel):
+    name: str
+    color: str = "#6366f1"
+
+
+class SessionFolderUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
+class SessionFolderResponse(BaseModel):
+    id: int
+    session_id: int
+    name: str
+    color: str
+    position: int
+
+    model_config = {"from_attributes": True}
+
+
 class SessionItemResponse(BaseModel):
     id: int
     session_id: int
     song_id: int
     position: int
+    folder_id: Optional[int] = None
+    folder_position: Optional[int] = None
     is_played: bool
     played_at: Optional[datetime]
     added_by: str
@@ -73,6 +95,7 @@ class SessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[SessionItemResponse] = []
+    folders: list[SessionFolderResponse] = []
     suggestions: list[SuggestionResponse] = []
     notes: list["NoteResponse"] = []
 
@@ -107,6 +130,7 @@ class SessionItemUpdate(BaseModel):
     position: Optional[int] = None
     is_played: Optional[bool] = None
     notes: Optional[str] = None
+    folder_id: Optional[int] = None
 
 
 # --- Suggestions ---

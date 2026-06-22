@@ -102,6 +102,21 @@ export const api = {
   duplicateSession: (id: number, data: any, password?: string) =>
     request<any>(`/sessions/${id}/duplicate`, { method: 'POST', body: JSON.stringify(data), headers: passwordHeaders(password) }),
 
+  // Session Folders
+  getSessionFolders: (sessionId: number) => request<any[]>(`/sessions/${sessionId}/folders`),
+  createSessionFolder: (sessionId: number, data: { name: string; color?: string }, password?: string) =>
+    request<any>(`/sessions/${sessionId}/folders`, { method: 'POST', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  updateSessionFolder: (sessionId: number, folderId: number, data: { name?: string; color?: string }, password?: string) =>
+    request<any>(`/sessions/${sessionId}/folders/${folderId}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  deleteSessionFolder: (sessionId: number, folderId: number, password?: string) =>
+    request<any>(`/sessions/${sessionId}/folders/${folderId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
+  reorderSessionFolders: (sessionId: number, folderIds: number[], password?: string) =>
+    request<any>(`/sessions/${sessionId}/folders/reorder`, { method: 'PUT', body: JSON.stringify(folderIds), headers: passwordHeaders(password) }),
+  assignItemFolder: (sessionId: number, itemId: number, folderId: number | null, password?: string) =>
+    request<any>(`/sessions/${sessionId}/items/${itemId}/assign-folder`, { method: 'PUT', body: JSON.stringify({ folder_id: folderId }), headers: passwordHeaders(password) }),
+  reorderFolderItems: (sessionId: number, folderId: number, itemIds: number[], password?: string) =>
+    request<any>(`/sessions/${sessionId}/folders/${folderId}/reorder`, { method: 'PUT', body: JSON.stringify(itemIds), headers: passwordHeaders(password) }),
+
   // Session Items
   getSessionItems: (sessionId: number) => request<any[]>(`/sessions/${sessionId}/items`),
   addSessionItem: (sessionId: number, data: any, password?: string) =>

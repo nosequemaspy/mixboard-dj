@@ -28,11 +28,26 @@ class Session(Base):
 
     items = relationship("SessionItem", back_populates="session", cascade="all, delete-orphan",
                          order_by="SessionItem.position")
+    folders = relationship("SessionFolder", back_populates="session", cascade="all, delete-orphan",
+                           order_by="SessionFolder.position")
     suggestions = relationship("SessionSuggestion", back_populates="session", cascade="all, delete-orphan",
                                order_by="SessionSuggestion.created_at.desc()")
     notes = relationship("SessionNote", back_populates="session", cascade="all, delete-orphan",
                          order_by="SessionNote.created_at.desc()")
     parent = relationship("Session", remote_side=[id], backref="duplicates")
+
+
+class SessionFolder(Base):
+    __tablename__ = "session_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(200), nullable=False)
+    color = Column(String(7), nullable=False, default="#6366f1")
+    position = Column(Integer, nullable=False, default=0)
+
+    session = relationship("Session", back_populates="folders")
+    items = relationship("SessionItem", back_populates="folder")
 
 
 class SessionItem(Base):
@@ -42,6 +57,8 @@ class SessionItem(Base):
     session_id = Column(Integer, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
     song_id = Column(Integer, ForeignKey("songs.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer, nullable=False, default=0)
+    folder_id = Column(Integer, ForeignKey("session_folders.id", ondelete="SET NULL"), nullable=True)
+    folder_position = Column(Integer, nullable=True)
     is_played = Column(Boolean, default=False)
     played_at = Column(DateTime, nullable=True)
     added_by = Column(String(200), default="dj")
@@ -49,6 +66,7 @@ class SessionItem(Base):
 
     session = relationship("Session", back_populates="items")
     song = relationship("Song")
+    folder = relationship("SessionFolder", back_populates="items")
 
 
 class SessionSuggestion(Base):

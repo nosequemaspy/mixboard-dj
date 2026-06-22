@@ -8,12 +8,13 @@ import bcrypt
 import httpx
 
 from database import get_db
-from models.session import Session as SessionModel, SessionItem, SessionSuggestion, SessionNote, generate_share_code
+from models.session import Session as SessionModel, SessionItem, SessionFolder, SessionSuggestion, SessionNote, generate_share_code
 from models.song import Song
 from schemas.session import (
     SessionCreate, SessionUpdate, SessionDuplicate, SessionVerify,
     SessionResponse, SessionListResponse,
     SessionItemCreate, SessionItemUpdate, SessionItemResponse,
+    SessionFolderCreate, SessionFolderUpdate, SessionFolderResponse,
     SuggestionCreate, SuggestionUpdate, SuggestionResponse,
     NoteCreate, NoteResponse,
 )
@@ -41,6 +42,7 @@ def _load_session(db: Session, session_id: int) -> SessionModel:
     session = db.query(SessionModel).options(
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionModel.folders),
         joinedload(SessionModel.suggestions),
         joinedload(SessionModel.notes),
     ).filter(SessionModel.id == session_id).first()
@@ -122,6 +124,7 @@ def get_session_by_code(
     session = db.query(SessionModel).options(
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionModel.folders),
         joinedload(SessionModel.suggestions),
         joinedload(SessionModel.notes),
     ).filter(SessionModel.share_code == code).first()
@@ -233,12 +236,27 @@ def duplicate_session(
         raise HTTPException(status_code=500, detail="Could not generate unique share code")
     db.refresh(new_session)
 
+    # Copy folders
+    folder_map = {}  # old_folder_id -> new_folder_id
+    for folder in original.folders:
+        new_folder = SessionFolder(
+            session_id=new_session.id,
+            name=folder.name,
+            color=folder.color,
+            position=folder.position,
+        )
+        db.add(new_folder)
+        db.flush()
+        folder_map[folder.id] = new_folder.id
+
     # Copy items
     for item in original.items:
         new_item = SessionItem(
             session_id=new_session.id,
             song_id=item.song_id,
             position=item.position,
+            folder_id=folder_map.get(item.folder_id) if item.folder_id else None,
+            folder_position=item.folder_position,
             is_played=False,
             added_by=item.added_by,
             notes=item.notes,
@@ -376,6 +394,180 @@ def reorder_items(
         ).first()
         if item:
             item.position = position
+    db.commit()
+    return {"ok": True}
+
+
+# --- Folders ---
+
+@router.get("/{session_id}/folders", response_model=list[SessionFolderResponse])
+def list_folders(session_id: int, db: Session = Depends(get_db)):
+    folders = db.query(SessionFolder).filter(
+        SessionFolder.session_id == session_id
+    ).order_by(SessionFolder.position).all()
+    return folders
+
+
+@router.post("/{session_id}/folders", response_model=SessionFolderResponse)
+def create_folder(
+    session_id: int,
+    data: SessionFolderCreate,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    max_pos = db.query(SessionFolder).filter(SessionFolder.session_id == session_id).count()
+    folder = SessionFolder(
+        session_id=session_id,
+        name=data.name,
+        color=data.color,
+        position=max_pos,
+    )
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@router.put("/{session_id}/folders/{folder_id}", response_model=SessionFolderResponse)
+def update_folder(
+    session_id: int,
+    folder_id: int,
+    data: SessionFolderUpdate,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    folder = db.query(SessionFolder).filter(
+        SessionFolder.id == folder_id, SessionFolder.session_id == session_id
+    ).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    if data.name is not None:
+        folder.name = data.name
+    if data.color is not None:
+        folder.color = data.color
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@router.delete("/{session_id}/folders/{folder_id}")
+def delete_folder(
+    session_id: int,
+    folder_id: int,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    folder = db.query(SessionFolder).filter(
+        SessionFolder.id == folder_id, SessionFolder.session_id == session_id
+    ).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    # Items with this folder_id will have folder_id set to NULL by ondelete="SET NULL"
+    db.delete(folder)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/{session_id}/folders/reorder")
+def reorder_folders(
+    session_id: int,
+    folder_ids: list[int],
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    for position, folder_id in enumerate(folder_ids):
+        folder = db.query(SessionFolder).filter(
+            SessionFolder.id == folder_id, SessionFolder.session_id == session_id
+        ).first()
+        if folder:
+            folder.position = position
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/{session_id}/items/{item_id}/assign-folder")
+def assign_item_folder(
+    session_id: int,
+    item_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    item = db.query(SessionItem).filter(
+        SessionItem.id == item_id, SessionItem.session_id == session_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    folder_id = data.get("folder_id")
+    if folder_id is not None:
+        folder = db.query(SessionFolder).filter(
+            SessionFolder.id == folder_id, SessionFolder.session_id == session_id
+        ).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        # Set folder_position to end of folder
+        max_pos = db.query(SessionItem).filter(
+            SessionItem.folder_id == folder_id
+        ).count()
+        item.folder_id = folder_id
+        item.folder_position = max_pos
+    else:
+        item.folder_id = None
+        item.folder_position = None
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/{session_id}/folders/{folder_id}/reorder")
+def reorder_folder_items(
+    session_id: int,
+    folder_id: int,
+    item_ids: list[int],
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    for position, item_id in enumerate(item_ids):
+        item = db.query(SessionItem).filter(
+            SessionItem.id == item_id,
+            SessionItem.session_id == session_id,
+            SessionItem.folder_id == folder_id,
+        ).first()
+        if item:
+            item.folder_position = position
     db.commit()
     return {"ok": True}
 

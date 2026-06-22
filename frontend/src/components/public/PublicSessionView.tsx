@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { SessionData } from '../../types';
 import { SuggestionForm } from './SuggestionForm';
 import { NotesSection } from './NotesSection';
+import { FolderChips } from '../session/FolderChips';
 
 interface PublicSessionViewProps {
   session: SessionData;
@@ -19,8 +20,32 @@ type Tab = 'songs' | 'notes' | 'suggest';
 export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
   const [search, setSearch] = useState('');
+  const [activeFolder, setActiveFolder] = useState<number | null>(null);
 
-  const filtered = session.items.filter(item => {
+  const folders = session.folders || [];
+
+  const folderItemCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const item of session.items) {
+      if (item.folder_id) {
+        counts[item.folder_id] = (counts[item.folder_id] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [session.items]);
+
+  const visibleItems = useMemo(() => {
+    let list = session.items;
+    if (activeFolder !== null) {
+      list = list.filter(i => i.folder_id === activeFolder);
+      list = [...list].sort((a, b) => (a.folder_position ?? 0) - (b.folder_position ?? 0));
+    } else {
+      list = [...list].sort((a, b) => a.position - b.position);
+    }
+    return list;
+  }, [session.items, activeFolder]);
+
+  const filtered = visibleItems.filter(item => {
     if (!search) return true;
     const q = search.toLowerCase();
     return item.song.title.toLowerCase().includes(q) || item.song.artist.toLowerCase().includes(q);
@@ -87,6 +112,18 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
       <div className="max-w-lg mx-auto">
         {activeTab === 'songs' ? (
           <div>
+            {/* Folder chips (read-only) */}
+            {folders.length > 0 && (
+              <FolderChips
+                folders={folders}
+                activeFolder={activeFolder}
+                onFolderChange={setActiveFolder}
+                totalItems={session.items.length}
+                folderItemCounts={folderItemCounts}
+                readOnly
+              />
+            )}
+
             {/* Search */}
             <div className="p-3">
               <input
@@ -99,26 +136,36 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
 
             {/* Song list */}
             <div>
-              {filtered.map(item => (
-                <div
-                  key={item.id}
-                  className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 ${
-                    item.is_played ? 'opacity-40' : ''
-                  }`}
-                >
-                  <span className="text-xs text-text-muted w-5 text-center">{item.position + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm text-text-primary truncate block">{item.song.title}</span>
-                    <span className="text-xs text-text-muted truncate block">{item.song.artist}</span>
+              {filtered.map(item => {
+                const folderColor = item.folder_id ? folders.find(f => f.id === item.folder_id)?.color : null;
+                const displayPos = activeFolder ? (item.folder_position ?? 0) + 1 : item.position + 1;
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 ${
+                      item.is_played ? 'opacity-40' : ''
+                    }`}
+                  >
+                    <span className="text-xs text-text-muted w-5 text-center">{displayPos}</span>
+                    {activeFolder === null && folderColor && (
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: folderColor }} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-text-primary truncate block">{item.song.title}</span>
+                      <span className="text-xs text-text-muted truncate block">{item.song.artist}</span>
+                    </div>
+                    <span className="text-xs text-text-muted font-mono">{formatDuration(item.song.duration_seconds)}</span>
+                    {item.is_played && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success">played</span>
+                    )}
                   </div>
-                  <span className="text-xs text-text-muted font-mono">{formatDuration(item.song.duration_seconds)}</span>
-                  {item.is_played && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success">played</span>
-                  )}
-                </div>
-              ))}
-              {filtered.length === 0 && session.items.length > 0 && (
+                );
+              })}
+              {filtered.length === 0 && visibleItems.length > 0 && (
                 <div className="py-8 text-center text-text-muted text-sm">No matches</div>
+              )}
+              {visibleItems.length === 0 && activeFolder !== null && (
+                <div className="py-8 text-center text-text-muted text-sm">No songs in this folder.</div>
               )}
               {session.items.length === 0 && (
                 <div className="py-8 text-center text-text-muted text-sm">No songs in this session yet.</div>
