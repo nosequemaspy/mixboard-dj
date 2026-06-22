@@ -118,6 +118,71 @@ export interface MidiMapping {
   deckId?: DeckId;
 }
 
+// Sessions
+export interface SessionListItem {
+  id: number;
+  name: string;
+  share_code: string;
+  has_password: boolean;
+  is_public: boolean;
+  allow_suggestions: boolean;
+  parent_session_id: number | null;
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+  pending_suggestions: number;
+}
+
+export interface SessionNote {
+  id: number;
+  session_id: number;
+  content: string;
+  author_name: string;
+  created_at: string;
+}
+
+export interface SessionData {
+  id: number;
+  name: string;
+  share_code: string;
+  has_password: boolean;
+  is_public: boolean;
+  allow_suggestions: boolean;
+  parent_session_id: number | null;
+  created_at: string;
+  updated_at: string;
+  items: SessionItem[];
+  suggestions: Suggestion[];
+  notes: SessionNote[];
+}
+
+export interface SessionItem {
+  id: number;
+  session_id: number;
+  song_id: number;
+  position: number;
+  is_played: boolean;
+  played_at: string | null;
+  added_by: string;
+  notes: string;
+  song: Song;
+}
+
+export interface Suggestion {
+  id: number;
+  session_id: number;
+  suggestion_type: string;
+  youtube_url: string | null;
+  youtube_title: string | null;
+  youtube_thumbnail: string | null;
+  manual_title: string | null;
+  manual_artist: string | null;
+  status: string;
+  submitted_by: string;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
 export type CrossfaderCurve = 'smooth' | 'sharp' | 'linear';
 
 export interface AudioSettings {

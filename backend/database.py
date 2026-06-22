@@ -25,5 +25,5 @@ def get_db():
 
 
 def init_db():
-    from models import song, category, playlist, stem, edit, task, settings  # noqa: F401
+    from models import song, category, playlist, stem, edit, task, settings, session  # noqa: F401
     Base.metadata.create_all(bind=engine)

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 
 interface KnobProps {
   value: number; // -1 to 1
@@ -11,33 +11,55 @@ interface KnobProps {
 export function Knob({ value, onChange, size = 40, color = '#6366f1', label }: KnobProps) {
   const knobRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
+  const onChangeRef = useRef(onChange);
+  const moveRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const upRef = useRef<(() => void) | null>(null);
+
+  onChangeRef.current = onChange;
 
   const angle = value * 135; // -135 to 135 degrees
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (moveRef.current) window.removeEventListener('mousemove', moveRef.current);
+      if (upRef.current) window.removeEventListener('mouseup', upRef.current);
+    };
+  }, []);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
+
+    // Remove any existing listeners first
+    if (moveRef.current) window.removeEventListener('mousemove', moveRef.current);
+    if (upRef.current) window.removeEventListener('mouseup', upRef.current);
+
     dragRef.current = { startY: e.clientY, startValue: value };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
       const delta = (dragRef.current.startY - e.clientY) / 100;
       const newValue = Math.max(-1, Math.min(1, dragRef.current.startValue + delta));
-      onChange(newValue);
+      onChangeRef.current(newValue);
     };
 
     const handleMouseUp = () => {
       dragRef.current = null;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      moveRef.current = null;
+      upRef.current = null;
     };
 
+    moveRef.current = handleMouseMove;
+    upRef.current = handleMouseUp;
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [value, onChange]);
+  }, [value]);
 
   const handleDoubleClick = useCallback(() => {
-    onChange(0);
-  }, [onChange]);
+    onChangeRef.current(0);
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-1">

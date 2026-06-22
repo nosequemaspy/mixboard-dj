@@ -3,6 +3,7 @@ import { useMixerStore } from '../../store/mixerStore';
 const tabs = [
   { id: 'library' as const, label: 'Library' },
   { id: 'playlist' as const, label: 'Playlists' },
+  { id: 'sessions' as const, label: 'Sessions' },
   { id: 'download' as const, label: 'Download' },
   { id: 'editor' as const, label: 'Editor' },
 ];

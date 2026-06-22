@@ -28,6 +28,8 @@ export class AudioEngine {
   private onTimeUpdate: ((deckId: DeckId, time: number) => void) | null = null;
   private onEnded: ((deckId: DeckId) => void) | null = null;
   private animFrameId: number | null = null;
+  // Reusable typed arrays for analyser data (avoids GC pressure)
+  private analyserBuffers: Map<DeckId, Uint8Array> = new Map();
 
   // Master chain
   private masterGain: GainNode;
@@ -155,6 +157,19 @@ export class AudioEngine {
     };
   }
 
+  private cleanupSources(deck: DeckNodes) {
+    if (deck.sourceOriginal) {
+      try { deck.sourceOriginal.stop(); } catch { /* already stopped */ }
+      deck.sourceOriginal.disconnect();
+      deck.sourceOriginal = null;
+    }
+    if (deck.sourceInstrumental) {
+      try { deck.sourceInstrumental.stop(); } catch { /* already stopped */ }
+      deck.sourceInstrumental.disconnect();
+      deck.sourceInstrumental = null;
+    }
+  }
+
   setCallbacks(
     onTimeUpdate: (deckId: DeckId, time: number) => void,
     onEnded: (deckId: DeckId) => void,
@@ -248,19 +263,13 @@ export class AudioEngine {
     const elapsed = (this.ctx.currentTime - deck.startTime) * deck.playbackRate;
     deck.pauseOffset += elapsed;
 
-    deck.sourceOriginal?.stop();
-    deck.sourceInstrumental?.stop();
-    deck.sourceOriginal = null;
-    deck.sourceInstrumental = null;
+    this.cleanupSources(deck);
     deck.isPlaying = false;
   }
 
   stop(deckId: DeckId) {
     const deck = this.decks.get(deckId)!;
-    deck.sourceOriginal?.stop();
-    deck.sourceInstrumental?.stop();
-    deck.sourceOriginal = null;
-    deck.sourceInstrumental = null;
+    this.cleanupSources(deck);
     deck.isPlaying = false;
     deck.pauseOffset = 0;
   }
@@ -269,10 +278,7 @@ export class AudioEngine {
     const deck = this.decks.get(deckId)!;
     const wasPlaying = deck.isPlaying;
     if (wasPlaying) {
-      deck.sourceOriginal?.stop();
-      deck.sourceInstrumental?.stop();
-      deck.sourceOriginal = null;
-      deck.sourceInstrumental = null;
+      this.cleanupSources(deck);
       deck.isPlaying = false;
     }
     deck.pauseOffset = time;
@@ -419,9 +425,13 @@ export class AudioEngine {
 
   getAnalyserData(deckId: DeckId): Uint8Array {
     const deck = this.decks.get(deckId)!;
-    const data = new Uint8Array(deck.analyser.frequencyBinCount);
-    deck.analyser.getByteFrequencyData(data);
-    return data;
+    let buf = this.analyserBuffers.get(deckId);
+    if (!buf || buf.length !== deck.analyser.frequencyBinCount) {
+      buf = new Uint8Array(deck.analyser.frequencyBinCount);
+      this.analyserBuffers.set(deckId, buf);
+    }
+    deck.analyser.getByteFrequencyData(buf);
+    return buf;
   }
 
   getCurrentTime(deckId: DeckId): number {

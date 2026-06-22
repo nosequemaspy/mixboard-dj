@@ -12,6 +12,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+function passwordHeaders(password?: string): Record<string, string> {
+  if (!password) return {};
+  return { 'X-Session-Password': password };
+}
+
 export const api = {
   // Songs
   getSongs: (params?: { search?: string; category_id?: number; sort_by?: string; sort_dir?: string }) => {
@@ -80,4 +85,50 @@ export const api = {
   getSettings: () => request<any>('/settings'),
   updateSettings: (data: Record<string, unknown>) =>
     request<any>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Sessions
+  getSessions: () => request<any[]>('/sessions'),
+  getSession: (id: number, password?: string) =>
+    request<any>(`/sessions/${id}`, { headers: passwordHeaders(password) }),
+  getSessionByCode: (code: string, password?: string) =>
+    request<any>(`/sessions/by-code/${code}`, { headers: passwordHeaders(password) }),
+  createSession: (data: any) => request<any>('/sessions', { method: 'POST', body: JSON.stringify(data) }),
+  updateSession: (id: number, data: any, password?: string) =>
+    request<any>(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  deleteSession: (id: number, password?: string) =>
+    request<any>(`/sessions/${id}`, { method: 'DELETE', headers: passwordHeaders(password) }),
+  verifySessionPassword: (id: number, password: string) =>
+    request<any>(`/sessions/${id}/verify`, { method: 'POST', body: JSON.stringify({ password }) }),
+  duplicateSession: (id: number, data: any, password?: string) =>
+    request<any>(`/sessions/${id}/duplicate`, { method: 'POST', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+
+  // Session Items
+  getSessionItems: (sessionId: number) => request<any[]>(`/sessions/${sessionId}/items`),
+  addSessionItem: (sessionId: number, data: any, password?: string) =>
+    request<any>(`/sessions/${sessionId}/items`, { method: 'POST', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  updateSessionItem: (sessionId: number, itemId: number, data: any, password?: string) =>
+    request<any>(`/sessions/${sessionId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  removeSessionItem: (sessionId: number, itemId: number, password?: string) =>
+    request<any>(`/sessions/${sessionId}/items/${itemId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
+  reorderSessionItems: (sessionId: number, itemIds: number[], password?: string) =>
+    request<any>(`/sessions/${sessionId}/reorder`, { method: 'PUT', body: JSON.stringify(itemIds), headers: passwordHeaders(password) }),
+
+  // Suggestions
+  getSessionSuggestions: (sessionId: number) => request<any[]>(`/sessions/${sessionId}/suggestions`),
+  createSuggestion: (sessionId: number, data: any) =>
+    request<any>(`/sessions/${sessionId}/suggestions`, { method: 'POST', body: JSON.stringify(data) }),
+  updateSuggestion: (sessionId: number, suggestionId: number, data: any, password?: string) =>
+    request<any>(`/sessions/${sessionId}/suggestions/${suggestionId}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  deleteSuggestion: (sessionId: number, suggestionId: number, password?: string) =>
+    request<any>(`/sessions/${sessionId}/suggestions/${suggestionId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
+
+  // Notes
+  getSessionNotes: (sessionId: number) => request<any[]>(`/sessions/${sessionId}/notes`),
+  createNote: (sessionId: number, data: { content: string; author_name?: string }) =>
+    request<any>(`/sessions/${sessionId}/notes`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteNote: (sessionId: number, noteId: number, password?: string) =>
+    request<any>(`/sessions/${sessionId}/notes/${noteId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
+
+  // YouTube oEmbed
+  youtubeOembed: (url: string) => request<any>(`/youtube/oembed?url=${encodeURIComponent(url)}`),
 };

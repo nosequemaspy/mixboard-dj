@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from config import SONGS_DIR
+from config import SONGS_DIR, SUPPORTED_FORMATS
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
 from services.analysis import analyze_audio
@@ -12,8 +12,11 @@ from websocket.manager import ws_manager
 
 
 def sanitize_filename(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
-    return name.strip()[:200]
+    # Remove path separators and other dangerous chars
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name)
+    # Remove leading/trailing dots and spaces
+    name = name.strip('. ')
+    return name[:200] if name else "download"
 
 
 def get_video_info(url: str) -> dict:
@@ -32,7 +35,6 @@ def get_video_info(url: str) -> dict:
 
 async def download_from_youtube(db: Session, url: str, title: str | None = None, artist: str | None = None) -> str:
     task_id = await create_task(db, "download")
-    loop = asyncio.get_running_loop()
 
     async def _do_download():
         try:
@@ -49,16 +51,16 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
 
             import yt_dlp
 
+            # Track progress via a shared mutable
+            progress_state = {"last_pct": 0.2}
+
             def progress_hook(d):
                 if d["status"] == "downloading":
                     total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                     downloaded = d.get("downloaded_bytes", 0)
                     if total > 0:
                         pct = 0.2 + 0.6 * (downloaded / total)
-                        loop.call_soon_threadsafe(
-                            asyncio.ensure_future,
-                            update_task_progress(db, task_id, pct, "running"),
-                        )
+                        progress_state["last_pct"] = pct
 
             ydl_opts = {
                 "format": "bestaudio/best",
@@ -80,11 +82,18 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             await asyncio.to_thread(do_download)
             await update_task_progress(db, task_id, 0.85, "running")
 
+            # Find the downloaded file
             final_path = SONGS_DIR / f"{safe_name}.mp3"
             if not final_path.exists():
-                for f in SONGS_DIR.glob(f"{safe_name}.*"):
-                    final_path = f
-                    break
+                # Search for any supported format with the same name
+                found = False
+                for f in SONGS_DIR.iterdir():
+                    if f.stem == safe_name and f.suffix.lower() in SUPPORTED_FORMATS:
+                        final_path = f
+                        found = True
+                        break
+                if not found:
+                    raise FileNotFoundError(f"Downloaded file not found: {safe_name}")
 
             # Analyze
             analysis = await asyncio.to_thread(analyze_audio, str(final_path))

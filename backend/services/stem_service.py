@@ -21,6 +21,7 @@ async def separate_stems(db: Session, song_id: int) -> str:
     db.commit()
 
     async def _do_separation():
+        output_dir = STEMS_DIR / str(song_id)
         try:
             await update_task_progress(db, task_id, 0.1, "running")
 
@@ -28,7 +29,6 @@ async def separate_stems(db: Session, song_id: int) -> str:
             if not song_file.is_absolute():
                 song_file = SONGS_DIR.parent.parent / song_file
 
-            output_dir = STEMS_DIR / str(song_id)
             output_dir.mkdir(parents=True, exist_ok=True)
 
             await update_task_progress(db, task_id, 0.15, "running")
@@ -48,11 +48,16 @@ async def separate_stems(db: Session, song_id: int) -> str:
             await asyncio.to_thread(run_demucs)
             await update_task_progress(db, task_id, 0.8, "running")
 
-            # Find separated stems
+            # Find separated stems - search for vocals.mp3 in any subdirectory
             stem_dir = None
-            for d in output_dir.rglob("*"):
-                if d.is_dir() and (d / "vocals.mp3").exists():
-                    stem_dir = d
+            for d in output_dir.rglob("vocals.mp3"):
+                stem_dir = d.parent
+                break
+
+            if not stem_dir:
+                # Also try .wav in case --mp3 flag wasn't supported
+                for d in output_dir.rglob("vocals.wav"):
+                    stem_dir = d.parent
                     break
 
             if not stem_dir:
@@ -60,37 +65,48 @@ async def separate_stems(db: Session, song_id: int) -> str:
 
             stem_types = ["vocals", "drums", "bass", "other"]
             for stem_type in stem_types:
+                # Try mp3 first, then wav
                 stem_file = stem_dir / f"{stem_type}.mp3"
-                if stem_file.exists():
-                    dest = output_dir / f"{stem_type}.mp3"
-                    if dest != stem_file:
-                        shutil.move(str(stem_file), str(dest))
-                    stem = Stem(
-                        song_id=song_id,
-                        stem_type=stem_type,
-                        file_path=str(dest.relative_to(STEMS_DIR.parent.parent)),
-                        model_used=DEMUCS_MODEL,
-                    )
-                    db.add(stem)
+                if not stem_file.exists():
+                    stem_file = stem_dir / f"{stem_type}.wav"
+                if not stem_file.exists():
+                    continue
+
+                dest = output_dir / f"{stem_type}.mp3"
+                if dest != stem_file:
+                    shutil.move(str(stem_file), str(dest))
+                stem = Stem(
+                    song_id=song_id,
+                    stem_type=stem_type,
+                    file_path=str(dest.relative_to(STEMS_DIR.parent.parent)),
+                    model_used=DEMUCS_MODEL,
+                )
+                db.add(stem)
 
             await update_task_progress(db, task_id, 0.9, "running")
 
             # Create instrumental (drums + bass + other)
             from pydub import AudioSegment
-            drums = AudioSegment.from_mp3(str(output_dir / "drums.mp3"))
-            bass = AudioSegment.from_mp3(str(output_dir / "bass.mp3"))
-            other = AudioSegment.from_mp3(str(output_dir / "other.mp3"))
-            instrumental = drums.overlay(bass).overlay(other)
-            instrumental_path = output_dir / "instrumental.mp3"
-            instrumental.export(str(instrumental_path), format="mp3", bitrate="320k")
+            inst_parts = []
+            for part_name in ["drums", "bass", "other"]:
+                part_path = output_dir / f"{part_name}.mp3"
+                if part_path.exists():
+                    inst_parts.append(AudioSegment.from_mp3(str(part_path)))
 
-            stem = Stem(
-                song_id=song_id,
-                stem_type="instrumental",
-                file_path=str(instrumental_path.relative_to(STEMS_DIR.parent.parent)),
-                model_used=DEMUCS_MODEL,
-            )
-            db.add(stem)
+            if inst_parts:
+                instrumental = inst_parts[0]
+                for part in inst_parts[1:]:
+                    instrumental = instrumental.overlay(part)
+                instrumental_path = output_dir / "instrumental.mp3"
+                instrumental.export(str(instrumental_path), format="mp3", bitrate="320k")
+
+                stem = Stem(
+                    song_id=song_id,
+                    stem_type="instrumental",
+                    file_path=str(instrumental_path.relative_to(STEMS_DIR.parent.parent)),
+                    model_used=DEMUCS_MODEL,
+                )
+                db.add(stem)
 
             # Clean up demucs intermediate dirs
             for d in output_dir.iterdir():
@@ -98,17 +114,31 @@ async def separate_stems(db: Session, song_id: int) -> str:
                     shutil.rmtree(d)
 
             song_ref = db.query(Song).filter(Song.id == song_id).first()
-            song_ref.stems_status = "ready"
-            db.commit()
+            if song_ref:
+                song_ref.stems_status = "ready"
+                db.commit()
+            else:
+                db.commit()
 
             await complete_task(db, task_id)
             await ws_manager.broadcast("stems_ready", {"song_id": song_id})
 
         except Exception as e:
+            # Clean up incomplete intermediate dirs on failure
+            try:
+                for d in output_dir.iterdir():
+                    if d.is_dir():
+                        shutil.rmtree(d)
+            except Exception:
+                pass
+
             song_ref = db.query(Song).filter(Song.id == song_id).first()
             if song_ref:
                 song_ref.stems_status = "error"
-                db.commit()
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
             await complete_task(db, task_id, error=str(e))
 
     asyncio.create_task(_do_separation())

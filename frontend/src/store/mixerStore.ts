@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { BackgroundTaskInfo } from '../types';
 
-type ViewPanel = 'library' | 'playlist' | 'download' | 'editor' | 'settings';
+type ViewPanel = 'library' | 'playlist' | 'download' | 'editor' | 'settings' | 'sessions';
 
 interface MixerStore {
   activePanel: ViewPanel;

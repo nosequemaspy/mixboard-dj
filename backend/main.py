@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from database import init_db
-from routers import songs, categories, playlists, stems, downloads, audio, settings
+from routers import songs, categories, playlists, stems, downloads, audio, settings, sessions
 from websocket.manager import ws_manager
 
 app = FastAPI(title="MixBoard API", version="1.0.0")
@@ -26,6 +26,8 @@ app.include_router(stems.router)
 app.include_router(downloads.router)
 app.include_router(audio.router)
 app.include_router(settings.router)
+app.include_router(sessions.router)
+app.include_router(sessions.youtube_router)
 
 
 @app.on_event("startup")

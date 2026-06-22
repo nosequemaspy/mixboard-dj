@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
+import { Routes, Route, useParams } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
+import { PublicSessionPage } from './components/public/PublicSessionPage';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useMidi } from './hooks/useMidi';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -62,7 +64,7 @@ function KeyboardHandler() {
   return null;
 }
 
-function App() {
+function DJApp() {
   useAudioEngine();
   useMidi();
   useWebSocket();
@@ -72,6 +74,21 @@ function App() {
       <KeyboardHandler />
       <AppLayout />
     </>
+  );
+}
+
+function PublicSessionRoute() {
+  const { shareCode } = useParams<{ shareCode: string }>();
+  if (!shareCode) return null;
+  return <PublicSessionPage shareCode={shareCode} />;
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/s/:shareCode" element={<PublicSessionRoute />} />
+      <Route path="/*" element={<DJApp />} />
+    </Routes>
   );
 }
 

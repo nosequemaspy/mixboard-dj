@@ -5,6 +5,7 @@ from models.stem import Stem
 from models.edit import EditedSong
 from models.task import BackgroundTask
 from models.settings import UserSettings
+from models.session import Session, SessionItem, SessionSuggestion
 
 __all__ = [
     "Song", "SongCategory", "song_categories",
@@ -14,4 +15,5 @@ __all__ = [
     "EditedSong",
     "BackgroundTask",
     "UserSettings",
+    "Session", "SessionItem", "SessionSuggestion",
 ]
