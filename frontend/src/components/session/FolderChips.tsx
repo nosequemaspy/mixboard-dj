@@ -89,38 +89,50 @@ export function FolderChips({
   };
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/30 overflow-x-auto scrollbar-none">
+    <div className="flex items-center gap-1 px-3 py-2 border-b border-border/40 overflow-x-auto scrollbar-none bg-bg-secondary/40">
       {/* Home chip */}
       <button
         onClick={() => onFolderChange(null)}
-        className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
+        className={`shrink-0 text-[11px] px-3 py-1 rounded-md font-medium transition-all duration-150 flex items-center gap-1.5 ${
           activeFolder === null
-            ? 'bg-accent text-white'
-            : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
+            ? 'bg-accent text-white shadow-sm shadow-accent/25'
+            : 'bg-bg-tertiary/60 text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
         }`}
       >
-        Home ({totalItems})
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="opacity-70">
+          <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l.622.621a1.5 1.5 0 001.06.439H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        All ({totalItems})
       </button>
+
+      {/* Divider when folders exist */}
+      {folders.length > 0 && (
+        <div className="shrink-0 w-px h-4 bg-border/40 mx-0.5" />
+      )}
 
       {/* Folder chips */}
       {folders.map(folder => (
         editingId === folder.id ? (
-          <div key={folder.id} className="shrink-0 flex items-center gap-1">
+          <div key={folder.id} className="shrink-0 flex items-center gap-1.5 bg-bg-tertiary/80 rounded-lg px-2 py-1">
             <input
               ref={editInputRef}
               value={editName}
               onChange={e => setEditName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleEditSubmit(); if (e.key === 'Escape') setEditingId(null); }}
               onBlur={handleEditSubmit}
-              className="text-[11px] px-2 py-0.5 rounded bg-bg-primary border border-border w-20 text-text-primary focus:outline-none focus:border-accent"
+              className="text-[11px] px-2 py-0.5 rounded-md bg-bg-primary border border-border/60 w-24 text-text-primary focus:outline-none focus:border-accent/60"
             />
-            <div className="flex gap-0.5">
+            <div className="flex gap-1">
               {FOLDER_COLORS.map(c => (
                 <button
                   key={c}
                   onClick={(e) => { e.stopPropagation(); setEditColor(c); }}
-                  className="w-3 h-3 rounded-full border border-border/50"
-                  style={{ backgroundColor: c, outline: editColor === c ? '2px solid white' : 'none', outlineOffset: '1px' }}
+                  className="w-4 h-4 rounded-full transition-transform duration-100"
+                  style={{
+                    backgroundColor: c,
+                    boxShadow: editColor === c ? `0 0 0 2px ${c}40, 0 0 0 3px ${c}` : 'none',
+                    transform: editColor === c ? 'scale(1.15)' : 'scale(1)',
+                  }}
                 />
               ))}
             </div>
@@ -130,18 +142,27 @@ export function FolderChips({
             key={folder.id}
             onClick={() => onFolderChange(folder.id)}
             onContextMenu={e => handleContextMenu(e, folder.id)}
-            className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
+            className={`shrink-0 text-[11px] px-3 py-1 rounded-md font-medium transition-all duration-150 flex items-center gap-1.5 ${
               activeFolder === folder.id
-                ? 'text-white'
-                : 'text-text-muted hover:text-text-primary'
+                ? 'text-white shadow-sm'
+                : 'hover:brightness-125'
             }`}
             style={{
-              backgroundColor: activeFolder === folder.id ? folder.color : undefined,
-              border: activeFolder !== folder.id ? `1px solid ${folder.color}40` : undefined,
+              backgroundColor: activeFolder === folder.id ? folder.color : `${folder.color}18`,
+              color: activeFolder === folder.id ? 'white' : folder.color,
+              boxShadow: activeFolder === folder.id ? `0 2px 8px ${folder.color}30` : undefined,
             }}
           >
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: folder.color }} />
-            {folder.name} ({folderItemCounts[folder.id] || 0})
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: activeFolder === folder.id ? 'rgba(255,255,255,0.7)' : folder.color,
+              }}
+            />
+            {folder.name}
+            <span className={`text-[10px] ${activeFolder === folder.id ? 'text-white/60' : 'opacity-50'}`}>
+              {folderItemCounts[folder.id] || 0}
+            </span>
           </button>
         )
       ))}
@@ -149,27 +170,35 @@ export function FolderChips({
       {/* Create folder */}
       {!readOnly && (
         creating ? (
-          <div className="shrink-0 flex items-center gap-1">
+          <div className="shrink-0 flex items-center gap-1.5 bg-bg-tertiary/80 rounded-lg px-2 py-1">
             <input
               ref={inputRef}
               value={newName}
               onChange={e => setNewName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
               placeholder="Folder name..."
-              className="text-[11px] px-2 py-0.5 rounded bg-bg-primary border border-border w-24 text-text-primary focus:outline-none focus:border-accent"
+              className="text-[11px] px-2 py-0.5 rounded-md bg-bg-primary border border-border/60 w-24 text-text-primary focus:outline-none focus:border-accent/60 placeholder:text-text-muted/50"
             />
-            <div className="flex gap-0.5">
+            <div className="flex gap-1">
               {FOLDER_COLORS.map(c => (
                 <button
                   key={c}
                   onClick={() => setNewColor(c)}
-                  className="w-3 h-3 rounded-full border border-border/50"
-                  style={{ backgroundColor: c, outline: newColor === c ? '2px solid white' : 'none', outlineOffset: '1px' }}
+                  className="w-4 h-4 rounded-full transition-transform duration-100"
+                  style={{
+                    backgroundColor: c,
+                    boxShadow: newColor === c ? `0 0 0 2px ${c}40, 0 0 0 3px ${c}` : 'none',
+                    transform: newColor === c ? 'scale(1.15)' : 'scale(1)',
+                  }}
                 />
               ))}
             </div>
-            <button onClick={handleCreate} className="text-[10px] text-accent hover:text-accent/80">OK</button>
-            <button onClick={() => setCreating(false)} className="text-[10px] text-text-muted hover:text-text-primary">&times;</button>
+            <button onClick={handleCreate} className="text-[11px] px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors">
+              Add
+            </button>
+            <button onClick={() => setCreating(false)} className="text-[11px] px-1 py-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors">
+              &times;
+            </button>
           </div>
         ) : (
           <button
@@ -177,9 +206,12 @@ export function FolderChips({
               setNewColor(FOLDER_COLORS[folders.length % FOLDER_COLORS.length]);
               setCreating(true);
             }}
-            className="shrink-0 text-[11px] px-2 py-1 rounded-full text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+            className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-accent hover:bg-accent/10 transition-all duration-150"
+            title="New folder"
           >
-            +
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M8 3.5v9M3.5 8h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
           </button>
         )
       )}
@@ -187,7 +219,7 @@ export function FolderChips({
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-bg-secondary border border-border rounded-lg shadow-lg py-1 min-w-[120px]"
+          className="fixed z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[140px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -195,14 +227,21 @@ export function FolderChips({
               const folder = folders.find(f => f.id === contextMenu.folderId);
               if (folder) startEdit(folder);
             }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-bg-hover"
+            className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover/80 flex items-center gap-2 transition-colors"
           >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-text-muted">
+              <path d="M11.5 1.5l3 3-9 9H2.5v-3l9-9z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             Rename / Color
           </button>
+          <div className="mx-2 my-0.5 border-t border-border/30" />
           <button
             onClick={() => handleDelete(contextMenu.folderId)}
-            className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-bg-hover"
+            className="w-full text-left px-3 py-2 text-xs text-danger hover:bg-danger/10 flex items-center gap-2 transition-colors"
           >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="text-danger/70">
+              <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 011.334-1.334h2.666a1.333 1.333 0 011.334 1.334V4m2 0v9.333a1.333 1.333 0 01-1.334 1.334H4.667a1.333 1.333 0 01-1.334-1.334V4h9.334z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             Delete folder
           </button>
         </div>

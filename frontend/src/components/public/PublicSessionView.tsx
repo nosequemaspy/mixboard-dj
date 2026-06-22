@@ -51,6 +51,8 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
     return item.song.title.toLowerCase().includes(q) || item.song.artist.toLowerCase().includes(q);
   });
 
+  const activeFolderData = activeFolder !== null ? folders.find(f => f.id === activeFolder) : null;
+
   return (
     <div className="min-h-screen bg-bg-primary">
       {/* Header */}
@@ -126,37 +128,47 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
 
             {/* Search */}
             <div className="p-3">
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search songs..."
-                className="w-full bg-bg-secondary border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-              />
+              <div className="relative">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+                  <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3"/>
+                  <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={activeFolderData ? `Search in ${activeFolderData.name}...` : 'Search songs...'}
+                  className="w-full bg-bg-secondary border border-border/60 rounded-md pl-9 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/60 placeholder:text-text-muted/50 transition-colors"
+                />
+              </div>
             </div>
 
             {/* Song list */}
             <div>
               {filtered.map(item => {
-                const folderColor = item.folder_id ? folders.find(f => f.id === item.folder_id)?.color : null;
+                const itemFolder = item.folder_id ? folders.find(f => f.id === item.folder_id) : null;
                 const displayPos = activeFolder ? (item.folder_position ?? 0) + 1 : item.position + 1;
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 ${
+                    className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 transition-colors ${
                       item.is_played ? 'opacity-40' : ''
                     }`}
                   >
-                    <span className="text-xs text-text-muted w-5 text-center">{displayPos}</span>
-                    {activeFolder === null && folderColor && (
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: folderColor }} />
+                    <span className="text-xs text-text-muted w-5 text-center tabular-nums">{displayPos}</span>
+                    {activeFolder === null && itemFolder && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: itemFolder.color, boxShadow: `0 0 4px ${itemFolder.color}40` }}
+                        title={itemFolder.name}
+                      />
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm text-text-primary truncate block">{item.song.title}</span>
-                      <span className="text-xs text-text-muted truncate block">{item.song.artist}</span>
+                      <span className="text-sm text-text-primary truncate block leading-tight">{item.song.title}</span>
+                      <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
                     </div>
-                    <span className="text-xs text-text-muted font-mono">{formatDuration(item.song.duration_seconds)}</span>
+                    <span className="text-xs text-text-muted font-mono tabular-nums">{formatDuration(item.song.duration_seconds)}</span>
                     {item.is_played && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success">played</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success font-medium">played</span>
                     )}
                   </div>
                 );
@@ -165,7 +177,12 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
                 <div className="py-8 text-center text-text-muted text-sm">No matches</div>
               )}
               {visibleItems.length === 0 && activeFolder !== null && (
-                <div className="py-8 text-center text-text-muted text-sm">No songs in this folder.</div>
+                <div className="py-10 text-center">
+                  <svg width="32" height="32" viewBox="0 0 16 16" fill="none" className="mx-auto mb-2 text-text-muted/30">
+                    <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l.622.621a1.5 1.5 0 001.06.439H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" stroke="currentColor" strokeWidth="1"/>
+                  </svg>
+                  <p className="text-text-muted text-sm">No songs in this folder</p>
+                </div>
               )}
               {session.items.length === 0 && (
                 <div className="py-8 text-center text-text-muted text-sm">No songs in this session yet.</div>

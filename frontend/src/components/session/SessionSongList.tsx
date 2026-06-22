@@ -44,30 +44,61 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
 
+  const currentFolder = currentFolderId ? folders.find(f => f.id === currentFolderId) : null;
+
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={e => { e.stopPropagation(); setOpen(!open); }}
-        className="text-[10px] px-1.5 py-0.5 rounded bg-bg-tertiary text-text-muted hover:text-text-primary"
+        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 ${
+          currentFolder
+            ? 'hover:brightness-125'
+            : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
+        }`}
+        style={currentFolder ? { backgroundColor: `${currentFolder.color}25`, color: currentFolder.color } : undefined}
         title="Assign to folder"
       >
-        &#128193;
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
+        </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-bg-secondary border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+        <div className="absolute right-0 top-full mt-1 z-40 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[150px]">
           <button
             onClick={() => { onAssign(null); setOpen(false); }}
-            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover ${currentFolderId === null ? 'text-accent font-medium' : 'text-text-primary'}`}
+            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors ${
+              currentFolderId === null ? 'text-accent' : 'text-text-primary'
+            }`}
           >
-            Home only
+            {currentFolderId === null && (
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="shrink-0">
+                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+              </svg>
+            )}
+            <span className={currentFolderId === null ? '' : 'ml-[18px]'}>No folder</span>
           </button>
+          {folders.length > 0 && <div className="mx-2 my-0.5 border-t border-border/30" />}
           {folders.map(f => (
             <button
               key={f.id}
               onClick={() => { onAssign(f.id); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover flex items-center gap-2 ${currentFolderId === f.id ? 'text-accent font-medium' : 'text-text-primary'}`}
+              className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                currentFolderId === f.id ? '' : 'text-text-primary'
+              }`}
+              style={{
+                color: currentFolderId === f.id ? f.color : undefined,
+                backgroundColor: currentFolderId === f.id ? `${f.color}10` : undefined,
+              }}
+              onMouseEnter={e => { if (currentFolderId !== f.id) (e.currentTarget.style.backgroundColor = `${f.color}0d`); }}
+              onMouseLeave={e => { if (currentFolderId !== f.id) (e.currentTarget.style.backgroundColor = ''); }}
             >
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+              {currentFolderId === f.id ? (
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="shrink-0">
+                  <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+                </svg>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+              )}
               {f.name}
             </button>
           ))}
@@ -117,7 +148,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
     onUpdate();
   };
 
-  const folderColor = item.folder_id ? folders.find(f => f.id === item.folder_id)?.color : null;
+  const itemFolder = item.folder_id ? folders.find(f => f.id === item.folder_id) : null;
   const displayPos = activeFolder ? (item.folder_position ?? 0) + 1 : item.position + 1;
 
   return (
@@ -131,26 +162,30 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
       <div {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-primary text-xs">
         :::
       </div>
-      <span className="text-xs text-text-muted w-5">{displayPos}</span>
-      {/* Folder color dot in Home view */}
-      {activeFolder === null && folderColor && (
-        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: folderColor }} />
+      <span className="text-xs text-text-muted w-5 text-center tabular-nums">{displayPos}</span>
+      {/* Folder color indicator in Home view */}
+      {activeFolder === null && itemFolder && (
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0 ring-1 ring-offset-1 ring-offset-bg-primary"
+          style={{ backgroundColor: itemFolder.color, boxShadow: `0 0 4px ${itemFolder.color}40` }}
+          title={itemFolder.name}
+        />
       )}
       <div className="flex-1 min-w-0">
-        <span className="text-sm text-text-primary truncate block">{item.song.title}</span>
-        <span className="text-xs text-text-muted truncate block">{item.song.artist}</span>
+        <span className="text-sm text-text-primary truncate block leading-tight">{item.song.title}</span>
+        <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
-      <span className="text-xs text-text-muted font-mono">{formatDuration(item.song.duration_seconds)}</span>
+      <span className="text-xs text-text-muted font-mono tabular-nums">{formatDuration(item.song.duration_seconds)}</span>
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {folders.length > 0 && (
           <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
         )}
-        <button onClick={() => loadToDeck('A')} className="text-[10px] px-1.5 py-0.5 rounded bg-deck-a/20 text-deck-a hover:bg-deck-a/30">A</button>
-        <button onClick={() => loadToDeck('B')} className="text-[10px] px-1.5 py-0.5 rounded bg-deck-b/20 text-deck-b hover:bg-deck-b/30">B</button>
-        <button onClick={markPlayed} className={`text-[10px] px-1.5 py-0.5 rounded ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}>
+        <button onClick={() => loadToDeck('A')} className="text-[10px] px-1.5 py-0.5 rounded bg-deck-a/20 text-deck-a hover:bg-deck-a/30 transition-colors">A</button>
+        <button onClick={() => loadToDeck('B')} className="text-[10px] px-1.5 py-0.5 rounded bg-deck-b/20 text-deck-b hover:bg-deck-b/30 transition-colors">B</button>
+        <button onClick={markPlayed} className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}>
           {item.is_played ? '\u2713' : '\u25CB'}
         </button>
-        <button onClick={removeItem} className="text-[10px] px-1.5 py-0.5 rounded bg-danger/20 text-danger hover:bg-danger/30">&times;</button>
+        <button onClick={removeItem} className="text-[10px] px-1.5 py-0.5 rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors">&times;</button>
       </div>
     </div>
   );
@@ -218,6 +253,7 @@ export function SessionSongList({
   };
 
   const firstUnplayed = filtered.find(i => !i.is_played);
+  const activeFolderData = activeFolder !== null ? folders.find(f => f.id === activeFolder) : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -232,12 +268,18 @@ export function SessionSongList({
         onRename={onRenameFolder}
       />
       <div className="px-3 py-2 border-b border-border/30">
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search in session..."
-          className="w-full bg-bg-primary border border-border rounded-md px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
-        />
+        <div className="relative">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={activeFolder !== null && activeFolderData ? `Search in ${activeFolderData.name}...` : 'Search in session...'}
+            className="w-full bg-bg-primary border border-border/60 rounded-md pl-8 pr-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent/60 placeholder:text-text-muted/50 transition-colors"
+          />
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -257,11 +299,15 @@ export function SessionSongList({
           </SortableContext>
         </DndContext>
         {filtered.length === 0 && visibleItems.length > 0 && (
-          <div className="py-4 text-center text-text-muted text-xs">No matches</div>
+          <div className="py-6 text-center text-text-muted text-xs">No matches</div>
         )}
         {visibleItems.length === 0 && activeFolder !== null && (
-          <div className="py-8 text-center text-text-muted text-sm">
-            No songs in this folder. Assign songs from Home view.
+          <div className="py-10 text-center">
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" className="mx-auto mb-2 text-text-muted/30">
+              <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l.622.621a1.5 1.5 0 001.06.439H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" stroke="currentColor" strokeWidth="1"/>
+            </svg>
+            <p className="text-text-muted text-sm">Empty folder</p>
+            <p className="text-text-muted/60 text-xs mt-1">Assign songs from the All view</p>
           </div>
         )}
         {items.length === 0 && (
