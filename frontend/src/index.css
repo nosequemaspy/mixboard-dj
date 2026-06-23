@@ -60,3 +60,18 @@ input[type="range"]::-webkit-slider-thumb {
   margin-top: -5px;
   cursor: pointer;
 }
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-bg-tertiary);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: none;
+  cursor: pointer;
+}

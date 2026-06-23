@@ -55,31 +55,29 @@ export function MixerPanel() {
       </div>
 
       {/* Volume faders + VU meters */}
-      <div className="flex gap-3 items-end flex-1 w-full justify-center">
-        <div className="flex flex-col items-center gap-1 h-full">
+      <div className="flex gap-3 items-stretch flex-1 w-full justify-center min-h-0 max-h-[180px]">
+        <div className="flex flex-col items-center gap-1">
           <span className="text-[9px] text-text-muted">VOL</span>
-          <div className="flex gap-1 flex-1">
+          <div className="flex gap-1 flex-1 min-h-0">
             <VUMeter deckId="A" />
             <input
               type="range"
               min="0" max="1" step="0.01"
               value={store.deckA.volume}
               onChange={handleVolumeA}
-              className="h-full"
-              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px' } as React.CSSProperties}
+              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px', height: '100%' } as React.CSSProperties}
             />
           </div>
         </div>
-        <div className="flex flex-col items-center gap-1 h-full">
+        <div className="flex flex-col items-center gap-1">
           <span className="text-[9px] text-text-muted">VOL</span>
-          <div className="flex gap-1 flex-1">
+          <div className="flex gap-1 flex-1 min-h-0">
             <input
               type="range"
               min="0" max="1" step="0.01"
               value={store.deckB.volume}
               onChange={handleVolumeB}
-              className="h-full"
-              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px' } as React.CSSProperties}
+              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px', height: '100%' } as React.CSSProperties}
             />
             <VUMeter deckId="B" />
           </div>

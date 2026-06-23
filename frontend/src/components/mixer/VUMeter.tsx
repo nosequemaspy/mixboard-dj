@@ -26,7 +26,7 @@ export function VUMeter({ deckId }: VUMeterProps) {
   const activeSegments = Math.round(level * segments);
 
   return (
-    <div className="flex flex-col-reverse gap-0.5 h-full">
+    <div className="flex flex-col-reverse gap-0.5">
       {Array.from({ length: segments }, (_, i) => {
         const isActive = i < activeSegments;
         let color = 'bg-success';
@@ -35,7 +35,7 @@ export function VUMeter({ deckId }: VUMeterProps) {
         return (
           <div
             key={i}
-            className={`w-2 h-full rounded-sm transition-opacity ${color} ${isActive ? 'opacity-100' : 'opacity-15'}`}
+            className={`w-2 h-2 rounded-sm transition-opacity ${color} ${isActive ? 'opacity-100' : 'opacity-15'}`}
           />
         );
       })}
