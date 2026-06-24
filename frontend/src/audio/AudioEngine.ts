@@ -29,7 +29,7 @@ export class AudioEngine {
   private onEnded: ((deckId: DeckId) => void) | null = null;
   private animFrameId: number | null = null;
   // Reusable typed arrays for analyser data (avoids GC pressure)
-  private analyserBuffers: Map<DeckId, Uint8Array> = new Map();
+  private analyserBuffers: Map<DeckId, Uint8Array<ArrayBuffer>> = new Map();
 
   // Master chain
   private masterGain: GainNode;

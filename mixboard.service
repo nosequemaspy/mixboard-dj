@@ -1,0 +1,15 @@
+[Unit]
+Description=MixBoard DJ App
+After=network.target
+
+[Service]
+Type=simple
+User=vicente
+WorkingDirectory=/home/vicente/claude-proyectos/api_musica_jovenes/backend
+ExecStart=/home/vicente/claude-proyectos/api_musica_jovenes/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
