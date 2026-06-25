@@ -81,6 +81,22 @@ def stream_song(song_id: int, request: Request, db: Session = Depends(get_db)):
     return range_file_response(file_path, request)
 
 
+@router.get("/download/{song_id}")
+def download_song(song_id: int, db: Session = Depends(get_db)):
+    song = db.query(Song).filter(Song.id == song_id).first()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    file_path = resolve_path(song.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    filename = f"{song.artist} - {song.title}{file_path.suffix}"
+    return FileResponse(
+        file_path,
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/stem/{stem_id}")
 def stream_stem(stem_id: int, request: Request, db: Session = Depends(get_db)):
     stem = db.query(Stem).filter(Stem.id == stem_id).first()

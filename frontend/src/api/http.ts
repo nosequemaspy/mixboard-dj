@@ -74,6 +74,7 @@ export const api = {
 
   // Audio
   streamUrl: (songId: number) => `${API_BASE}/audio/stream/${songId}`,
+  downloadUrl: (songId: number) => `${API_BASE}/audio/download/${songId}`,
   stemUrl: (stemId: number) => `${API_BASE}/audio/stem/${stemId}`,
   stemByTypeUrl: (songId: number, stemType: string) => `${API_BASE}/audio/stem-by-type/${songId}/${stemType}`,
   editStreamUrl: (editId: number) => `${API_BASE}/audio/edit/${editId}`,

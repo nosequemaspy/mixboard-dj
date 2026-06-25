@@ -147,6 +147,13 @@ export function SongTable() {
             Load to Deck B
           </button>
           <hr className="border-border my-1" />
+          <a
+            href={api.downloadUrl(contextMenu.song.id)}
+            className="block w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover"
+            onClick={() => setContextMenu(null)}
+          >
+            Descargar a PC
+          </a>
           {contextMenu.song.stems_status === 'none' && (
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover"
@@ -155,11 +162,12 @@ export function SongTable() {
               Separate Stems
             </button>
           )}
+          <hr className="border-border my-1" />
           <button
             className="w-full text-left px-3 py-1.5 text-sm text-danger hover:bg-bg-hover"
             onClick={() => handleDelete(contextMenu.song)}
           >
-            Delete
+            Eliminar
           </button>
         </div>
       )}
