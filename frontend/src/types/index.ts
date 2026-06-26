@@ -36,27 +36,6 @@ export interface Category {
   song_count: number;
 }
 
-export interface Playlist {
-  id: number;
-  name: string;
-  description: string;
-  event_date: string | null;
-  is_active: boolean;
-  created_at: string;
-  items: PlaylistItem[];
-}
-
-export interface PlaylistItem {
-  id: number;
-  playlist_id: number;
-  song_id: number;
-  position: number;
-  is_played: boolean;
-  played_at: string | null;
-  notes: string;
-  song: Song;
-}
-
 export interface Stem {
   id: number;
   song_id: number;

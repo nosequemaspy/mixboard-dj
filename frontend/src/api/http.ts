@@ -46,21 +46,6 @@ export const api = {
   updateCategory: (id: number, data: any) => request<any>(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCategory: (id: number) => request<any>(`/categories/${id}`, { method: 'DELETE' }),
 
-  // Playlists
-  getPlaylists: () => request<any[]>('/playlists'),
-  getPlaylist: (id: number) => request<any>(`/playlists/${id}`),
-  createPlaylist: (data: any) => request<any>('/playlists', { method: 'POST', body: JSON.stringify(data) }),
-  updatePlaylist: (id: number, data: any) => request<any>(`/playlists/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deletePlaylist: (id: number) => request<any>(`/playlists/${id}`, { method: 'DELETE' }),
-  addPlaylistItem: (playlistId: number, data: any) =>
-    request<any>(`/playlists/${playlistId}/items`, { method: 'POST', body: JSON.stringify(data) }),
-  updatePlaylistItem: (playlistId: number, itemId: number, data: any) =>
-    request<any>(`/playlists/${playlistId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
-  removePlaylistItem: (playlistId: number, itemId: number) =>
-    request<any>(`/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' }),
-  reorderPlaylistItems: (playlistId: number, itemIds: number[]) =>
-    request<any>(`/playlists/${playlistId}/reorder`, { method: 'PUT', body: JSON.stringify(itemIds) }),
-
   // Stems
   getStems: (songId: number) => request<any[]>(`/stems/${songId}`),
   separateStems: (songId: number) =>
@@ -86,6 +71,8 @@ export const api = {
   getSettings: () => request<any>('/settings'),
   updateSettings: (data: Record<string, unknown>) =>
     request<any>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getStorageUsage: () => request<any>('/settings/storage'),
+  getFlyStatus: () => request<any>('/fly/status'),
 
   // Sessions
   getSessions: () => request<any[]>('/sessions'),

@@ -5,9 +5,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
-from config import SONGS_DIR, SUPPORTED_FORMATS
+from config import SONGS_DIR, STEMS_DIR, EDITS_DIR, SUPPORTED_FORMATS, MAX_UPLOAD_SIZE_MB
 from database import get_db
+from services.storage import check_storage_available
 from models.song import Song, song_categories
+from models.stem import Stem
+from models.edit import EditedSong
 from models.category import Category
 from schemas.song import SongResponse, SongListResponse, SongUpdate
 from services.analysis import analyze_audio
@@ -69,19 +72,37 @@ async def upload_song(
 ):
     ext = Path(file.filename).suffix.lower()
     if ext not in SUPPORTED_FORMATS:
-        raise HTTPException(status_code=400, detail=f"Unsupported format: {ext}")
+        raise HTTPException(status_code=400, detail=f"Formato no soportado: {ext}")
 
-    safe_name = file.filename.replace("/", "_").replace("\\", "_")
+    # Check storage before accepting upload
+    has_space, used, limit = check_storage_available()
+    if not has_space:
+        raise HTTPException(
+            status_code=507,
+            detail=f"Sin espacio: {used // (1024*1024)} MB usados de {limit // (1024*1024)} MB. Elimina canciones para liberar espacio."
+        )
+
+    import re
+    safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', file.filename)
+    safe_name = safe_name.strip('. ')[:200] or "upload"
     dest = SONGS_DIR / safe_name
     counter = 1
+    base_stem = Path(safe_name).stem
     while dest.exists():
-        stem = dest.stem
-        dest = SONGS_DIR / f"{stem}_{counter}{ext}"
+        dest = SONGS_DIR / f"{base_stem}_{counter}{ext}"
         counter += 1
 
+    # Stream in chunks to avoid loading entire file into memory (256MB RAM limit)
+    max_bytes = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    total_written = 0
     with open(dest, "wb") as f:
-        content = await file.read()
-        f.write(content)
+        while chunk := await file.read(1024 * 256):  # 256KB chunks
+            total_written += len(chunk)
+            if total_written > max_bytes:
+                f.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail=f"Archivo muy grande. Maximo: {MAX_UPLOAD_SIZE_MB} MB")
+            f.write(chunk)
 
     # Analyze in background-ish (but we need results)
     try:
@@ -134,11 +155,37 @@ def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/{song_id}")
 def delete_song(song_id: int, db: Session = Depends(get_db)):
-    song = db.query(Song).filter(Song.id == song_id).first()
+    song = db.query(Song).options(
+        joinedload(Song.stems), joinedload(Song.edited_versions)
+    ).filter(Song.id == song_id).first()
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
 
-    # Delete file
+    # Delete stem files from disk
+    for stem in song.stems:
+        stem_path = Path(stem.file_path)
+        if not stem_path.is_absolute():
+            stem_path = SONGS_DIR.parent.parent / stem_path
+        if stem_path.exists():
+            stem_path.unlink()
+    # Remove stem directory for this song if it exists
+    stem_dir = STEMS_DIR / str(song_id)
+    if stem_dir.exists():
+        shutil.rmtree(stem_dir, ignore_errors=True)
+
+    # Delete edit files from disk
+    for edit in song.edited_versions:
+        edit_path = Path(edit.file_path)
+        if not edit_path.is_absolute():
+            edit_path = SONGS_DIR.parent.parent / edit_path
+        if edit_path.exists():
+            edit_path.unlink()
+    # Remove edits directory for this song if it exists
+    edit_dir = EDITS_DIR / str(song_id)
+    if edit_dir.exists():
+        shutil.rmtree(edit_dir, ignore_errors=True)
+
+    # Delete main song file
     file_path = Path(song.file_path)
     if not file_path.is_absolute():
         file_path = SONGS_DIR.parent.parent / file_path

@@ -32,4 +32,4 @@ class PlaylistItem(Base):
     notes = Column(String(500), default="")
 
     playlist = relationship("Playlist", back_populates="items")
-    song = relationship("Song", back_populates="playlist_items")
+    song = relationship("Song")

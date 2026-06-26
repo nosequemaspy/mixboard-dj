@@ -4,10 +4,11 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from config import SONGS_DIR, SUPPORTED_FORMATS
+from config import SONGS_DIR, SUPPORTED_FORMATS, YTDLP_AUDIO_QUALITY, MAX_DOWNLOAD_DURATION
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
 from services.analysis import analyze_audio
+from services.storage import check_storage_available
 from websocket.manager import ws_manager
 
 
@@ -34,6 +35,14 @@ def get_video_info(url: str) -> dict:
 
 
 async def download_from_youtube(db: Session, url: str, title: str | None = None, artist: str | None = None) -> str:
+    # Pre-check: storage space available
+    has_space, used, limit = check_storage_available(needed_bytes=15 * 1024 * 1024)  # estimate 15MB needed
+    if not has_space:
+        raise ValueError(
+            f"Sin espacio: {used // (1024*1024)} MB usados de {limit // (1024*1024)} MB. "
+            "Elimina canciones para liberar espacio."
+        )
+
     task_id = await create_task(db, "download")
 
     async def _do_download():
@@ -41,6 +50,15 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             await update_task_progress(db, task_id, 0.1, "running")
 
             info = await asyncio.to_thread(get_video_info, url)
+
+            # Check duration limit
+            duration = info.get("duration_seconds", 0)
+            if duration > MAX_DOWNLOAD_DURATION:
+                raise ValueError(
+                    f"Video demasiado largo ({int(duration // 60)}m). "
+                    f"Maximo permitido: {MAX_DOWNLOAD_DURATION // 60} minutos."
+                )
+
             final_title = title or info["title"]
             final_artist = artist or info["artist"]
 
@@ -67,7 +85,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
-                    "preferredquality": "320",
+                    "preferredquality": YTDLP_AUDIO_QUALITY,
                 }],
                 "outtmpl": output_path,
                 "quiet": True,

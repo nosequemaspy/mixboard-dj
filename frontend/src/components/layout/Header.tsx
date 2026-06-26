@@ -1,15 +1,34 @@
+import { useState, useEffect } from 'react';
 import { useMixerStore } from '../../store/mixerStore';
+import { api } from '../../api/http';
 
 const tabs = [
   { id: 'library' as const, label: 'Library' },
-  { id: 'playlist' as const, label: 'Playlists' },
   { id: 'sessions' as const, label: 'Sessions' },
   { id: 'download' as const, label: 'Download' },
   { id: 'editor' as const, label: 'Editor' },
 ];
 
+function formatBytesShort(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 export function Header() {
   const { activePanel, setActivePanel } = useMixerStore();
+  const [storage, setStorage] = useState<{ total_bytes: number; limit_bytes: number; usage_percent: number } | null>(null);
+
+  // Fetch storage once on mount, then every 5 minutes
+  useEffect(() => {
+    const load = () => api.getStorageUsage().then(setStorage).catch(() => {});
+    load();
+    const interval = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isDanger = storage && storage.usage_percent >= 90;
+  const isWarning = storage && storage.usage_percent >= 70;
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border">
@@ -34,6 +53,31 @@ export function Header() {
           ))}
         </nav>
         <div className="w-px h-5 bg-border mx-2" />
+
+        {/* Storage indicator */}
+        {storage && (
+          <button
+            onClick={() => setActivePanel('settings')}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono transition-colors mr-1 ${
+              isDanger ? 'bg-danger/15 text-danger hover:bg-danger/25' :
+              isWarning ? 'bg-warning/15 text-warning hover:bg-warning/25' :
+              'bg-bg-tertiary text-text-muted hover:bg-bg-hover hover:text-text-secondary'
+            }`}
+            title="Almacenamiento — click para ver detalles"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+            <div className="w-14 bg-bg-primary rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${isDanger ? 'bg-danger' : isWarning ? 'bg-warning' : 'bg-accent'}`}
+                style={{ width: `${Math.min(storage.usage_percent, 100)}%` }}
+              />
+            </div>
+            <span>{formatBytesShort(storage.total_bytes)}</span>
+          </button>
+        )}
+
         <button
           onClick={() => setActivePanel('settings')}
           className={`p-1.5 rounded-md transition-colors ${

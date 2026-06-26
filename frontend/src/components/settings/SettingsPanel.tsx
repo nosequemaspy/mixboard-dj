@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { AudioSection } from './AudioSection';
 import { MixerSection } from './MixerSection';
 import { MidiSection } from './MidiSection';
+import { HostingSection } from './HostingSection';
 
-type SettingsTab = 'audio' | 'mixer' | 'midi';
+type SettingsTab = 'audio' | 'mixer' | 'midi' | 'hosting';
 
 const tabs: { id: SettingsTab; label: string }[] = [
   { id: 'audio', label: 'Audio' },
   { id: 'mixer', label: 'Mixer' },
   { id: 'midi', label: 'MIDI' },
+  { id: 'hosting', label: 'Hosting' },
 ];
 
 export function SettingsPanel() {
@@ -43,6 +45,7 @@ export function SettingsPanel() {
         {activeTab === 'audio' && <AudioSection />}
         {activeTab === 'mixer' && <MixerSection />}
         {activeTab === 'midi' && <MidiSection />}
+        {activeTab === 'hosting' && <HostingSection />}
       </div>
     </div>
   );

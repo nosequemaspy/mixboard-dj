@@ -2,7 +2,6 @@ import { Header } from './Header';
 import { DeckPanel } from '../deck/DeckPanel';
 import { MixerPanel } from '../mixer/MixerPanel';
 import { LibraryPanel } from '../library/LibraryPanel';
-import { PlaylistPanel } from '../playlist/PlaylistPanel';
 import { SessionPanel } from '../session/SessionPanel';
 import { DownloadPanel } from '../download/DownloadPanel';
 import { AudioEditor } from '../editor/AudioEditor';
@@ -24,7 +23,6 @@ export function AppLayout() {
       {/* Bottom panel */}
       <div className="flex-1 overflow-hidden">
         {activePanel === 'library' && <LibraryPanel />}
-        {activePanel === 'playlist' && <PlaylistPanel />}
         {activePanel === 'sessions' && <SessionPanel />}
         {activePanel === 'download' && <DownloadPanel />}
         {activePanel === 'editor' && <AudioEditor />}

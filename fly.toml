@@ -1,19 +1,24 @@
-app = "mixboard-dj"
-primary_region = "mia"
+# fly.toml app configuration file generated for mixboard-dj on 2026-06-26T09:48:43-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'mixboard-dj'
+primary_region = 'dfw'
 
 [build]
+
+[[mounts]]
+  source = 'mixboard_data'
+  destination = '/app/storage'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "suspend"
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
   min_machines_running = 0
 
-[mounts]
-  source = "mixboard_data"
-  destination = "/app/storage"
-
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'

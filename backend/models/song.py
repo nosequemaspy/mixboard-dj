@@ -36,5 +36,4 @@ class Song(Base):
 
     categories = relationship("Category", secondary=song_categories, back_populates="songs")
     stems = relationship("Stem", back_populates="song", cascade="all, delete-orphan")
-    playlist_items = relationship("PlaylistItem", back_populates="song", cascade="all, delete-orphan")
     edited_versions = relationship("EditedSong", back_populates="original_song", cascade="all, delete-orphan")

@@ -42,7 +42,7 @@ echo "[3/4] Creando volumen para almacenamiento..."
 if flyctl volumes list 2>/dev/null | grep -q "mixboard_data"; then
     echo "  Volumen ya existe, continuando..."
 else
-    flyctl volumes create mixboard_data --region mia --size 10 --yes
+    flyctl volumes create mixboard_data --region mia --size 3 --yes
 fi
 echo ""
 
