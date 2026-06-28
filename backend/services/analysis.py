@@ -16,8 +16,11 @@ def _analyze_with_librosa(file_path: str) -> dict:
     import librosa
     import numpy as np
 
-    y, sr = librosa.load(file_path, sr=22050, mono=True)
-    duration = librosa.get_duration(y=y, sr=sr)
+    # Get duration without loading the full audio
+    duration = librosa.get_duration(path=file_path)
+
+    # Load only the first 60s at low sample rate for BPM/key analysis
+    y, sr = librosa.load(file_path, sr=22050, mono=True, duration=60)
 
     # BPM detection
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -29,12 +32,13 @@ def _analyze_with_librosa(file_path: str) -> dict:
     key_strengths = chroma.mean(axis=1)
     detected_key = key_names[int(np.argmax(key_strengths))]
 
-    # Waveform peaks (downsample to ~800 points for frontend)
+    # Waveform peaks: reload full audio at very low sr for speed
+    y_full, _ = librosa.load(file_path, sr=8000, mono=True)
     num_peaks = 800
-    chunk_size = max(1, len(y) // num_peaks)
+    chunk_size = max(1, len(y_full) // num_peaks)
     peaks = []
-    for i in range(0, len(y), chunk_size):
-        chunk = y[i:i + chunk_size]
+    for i in range(0, len(y_full), chunk_size):
+        chunk = y_full[i:i + chunk_size]
         if len(chunk) > 0:
             peaks.append(float(np.max(np.abs(chunk))))
     max_peak = max(peaks) if peaks else 1.0
