@@ -20,9 +20,28 @@ def sanitize_filename(name: str) -> str:
     return name[:200] if name else "download"
 
 
+def _find_js_runtimes() -> dict | None:
+    """Find a JS runtime (node/deno/bun) for yt-dlp signature extraction."""
+    import shutil
+    for runtime in ("node", "deno", "bun"):
+        path = shutil.which(runtime)
+        if path:
+            return {runtime: {"path": path}}
+    return None
+
+
+def _base_ydl_opts() -> dict:
+    """Common yt-dlp options with JS runtime if available."""
+    opts = {"quiet": True, "no_warnings": True}
+    js_runtimes = _find_js_runtimes()
+    if js_runtimes:
+        opts["js_runtimes"] = js_runtimes
+    return opts
+
+
 def get_video_info(url: str) -> dict:
     import yt_dlp
-    ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": False}
+    ydl_opts = {**_base_ydl_opts(), "extract_flat": False}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return {
@@ -81,6 +100,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                         progress_state["last_pct"] = pct
 
             ydl_opts = {
+                **_base_ydl_opts(),
                 "format": "bestaudio/best",
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
@@ -88,8 +108,6 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                     "preferredquality": YTDLP_AUDIO_QUALITY,
                 }],
                 "outtmpl": output_path,
-                "quiet": True,
-                "no_warnings": True,
                 "progress_hooks": [progress_hook],
             }
 

@@ -4,7 +4,7 @@ sqlalchemy==2.0.36
 pydantic==2.10.3
 python-multipart==0.0.19
 aiofiles==24.1.0
-yt-dlp==2024.12.13
+yt-dlp>=2026.6.9
 pydub==0.25.1
 librosa==0.10.2.post1
 demucs==4.0.1
