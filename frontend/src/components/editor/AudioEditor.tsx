@@ -128,12 +128,10 @@ export function AudioEditor() {
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
   const clipsRef = useRef<Clip[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const originalGainRef = useRef<GainNode | null>(null);
   const instrumentalBufferRef = useRef<AudioBuffer | null>(null);
   const instrumentalSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const instrumentalGainRef = useRef<GainNode | null>(null);
   const instrumentalDataRef = useRef<ArrayBuffer | null>(null);
-  const mediaSourceConnectedRef = useRef(false);
   const muteActiveRef = useRef(false);
   const muteStartCtxTimeRef = useRef(0);
   const muteStartOffsetRef = useRef(0);
@@ -151,30 +149,17 @@ export function AudioEditor() {
   const deletedCount = clips.filter(c => c.status === 'delete').length;
 
   // --- AudioContext setup (must be called from user gesture for autoplay policy) ---
-  // Routes WaveSurfer's media element through AudioContext + GainNodes,
-  // same architecture as the deck's AudioEngine for proper crossfading.
+  // AudioContext is used ONLY for instrumental playback.
+  // WaveSurfer's original audio is muted/unmuted via media.muted property.
 
   const ensureAudioCtx = useCallback(async () => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
-      originalGainRef.current = audioCtxRef.current.createGain();
-      originalGainRef.current.connect(audioCtxRef.current.destination);
       instrumentalGainRef.current = audioCtxRef.current.createGain();
       instrumentalGainRef.current.connect(audioCtxRef.current.destination);
     }
     if (audioCtxRef.current.state === 'suspended') {
       await audioCtxRef.current.resume();
-    }
-    // Capture WaveSurfer's media element into our AudioContext (one-time)
-    if (!mediaSourceConnectedRef.current && wsRef.current) {
-      try {
-        const mediaEl = wsRef.current.getMediaElement();
-        const source = audioCtxRef.current.createMediaElementSource(mediaEl);
-        source.connect(originalGainRef.current!);
-        mediaSourceConnectedRef.current = true;
-      } catch (e) {
-        console.error('Failed to capture media element:', e);
-      }
     }
     // Decode pending instrumental data if available
     if (instrumentalDataRef.current && !instrumentalBufferRef.current) {
@@ -445,18 +430,15 @@ export function AudioEditor() {
     return () => { cancelled = true; };
   }, [selectedSong?.id, canMuteVocals]);
 
-  // --- Real-time preview: skip deleted clips, crossfade to instrumental for muted ---
-  // Uses GainNode crossfading (same as deck AudioEngine) for seamless quality.
+  // --- Real-time preview: skip deleted clips, play instrumental for muted ---
+  // Mutes WaveSurfer via media.muted and plays instrumental via AudioContext.
 
   useEffect(() => {
     if (!isPlaying || !wsRef.current) {
-      // When paused, restore original gain and stop instrumental
+      // When paused, unmute original and stop instrumental
       if (muteActiveRef.current) {
         muteActiveRef.current = false;
-        const ctx = audioCtxRef.current;
-        if (ctx && originalGainRef.current) {
-          originalGainRef.current.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.02);
-        }
+        try { const m = wsRef.current?.getMediaElement(); if (m) m.muted = false; } catch {}
         if (instrumentalSourceRef.current) {
           try { instrumentalSourceRef.current.stop(); } catch {}
           instrumentalSourceRef.current = null;
@@ -511,17 +493,15 @@ export function AudioEditor() {
           ws.pause();
         }
       } else if (clip.status === 'mute' && instrumentalBufferRef.current) {
-        const ctx = audioCtxRef.current;
-        if (ctx && originalGainRef.current) {
-          if (!muteActiveRef.current) {
-            // Crossfade: original → 0, instrumental → 1 (20ms ramp like deck)
-            muteActiveRef.current = true;
-            const now = ctx.currentTime;
-            originalGainRef.current.gain.setValueAtTime(originalGainRef.current.gain.value, now);
-            originalGainRef.current.gain.linearRampToValueAtTime(0, now + 0.02);
-            startInstrumental(t);
-          } else {
-            // Drift correction: re-sync if >200ms drift
+        if (!muteActiveRef.current) {
+          // Mute original (absolute silence), play instrumental
+          muteActiveRef.current = true;
+          try { ws.getMediaElement().muted = true; } catch {}
+          startInstrumental(t);
+        } else {
+          // Drift correction: re-sync if >200ms drift
+          const ctx = audioCtxRef.current;
+          if (ctx) {
             const elapsed = ctx.currentTime - muteStartCtxTimeRef.current;
             const expected = muteStartOffsetRef.current + elapsed;
             if (Math.abs(expected - t) > 0.2) {
@@ -530,15 +510,10 @@ export function AudioEditor() {
           }
         }
       } else {
-        // Normal clip - restore original audio
+        // Normal clip - unmute original, stop instrumental
         if (muteActiveRef.current) {
           muteActiveRef.current = false;
-          const ctx = audioCtxRef.current;
-          if (ctx && originalGainRef.current) {
-            const now = ctx.currentTime;
-            originalGainRef.current.gain.setValueAtTime(originalGainRef.current.gain.value, now);
-            originalGainRef.current.gain.linearRampToValueAtTime(1, now + 0.02);
-          }
+          try { ws.getMediaElement().muted = false; } catch {}
           stopInstrumental();
         }
       }
