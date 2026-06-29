@@ -472,6 +472,10 @@ export class AudioEngine {
     return deck.pauseOffset + elapsed;
   }
 
+  isInstrumentalLoaded(deckId: DeckId): boolean {
+    return this.decks.get(deckId)!.bufferInstrumental !== null;
+  }
+
   isPlaying(deckId: DeckId): boolean {
     return this.decks.get(deckId)!.isPlaying;
   }

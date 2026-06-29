@@ -16,6 +16,7 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
   const stemsStatus = deck.song?.stems_status;
   const hasStemsReady = stemsStatus === 'ready';
   const isProcessing = stemsStatus === 'processing';
+  const hasError = stemsStatus === 'error';
 
   const handleToggle = async () => {
     if (!deck.song) return;
@@ -26,9 +27,16 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
 
     if (newMuted) {
       if (hasStemsReady) {
-        // Stems ready — apply audio mute instantly
+        // Stems ready — ensure instrumental buffer is loaded, then mute
+        if (!engine.isInstrumentalLoaded(deckId)) {
+          const loaded = await engine.loadInstrumentalHot(deckId, deck.song.id);
+          if (!loaded) {
+            setVocalMuted(deckId, false);
+            return;
+          }
+        }
         engine.setVocalMute(deckId, true);
-      } else if (!isProcessing) {
+      } else if (!isProcessing && !hasError) {
         // Trigger separation in background — websocket will hot-load when done
         updateSongInDeck(deckId, { stems_status: 'processing' });
         try {
@@ -37,8 +45,16 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
           updateSongInDeck(deckId, { stems_status: 'none' });
           setVocalMuted(deckId, false);
         }
+      } else if (hasError) {
+        // Previous attempt failed — retry
+        updateSongInDeck(deckId, { stems_status: 'processing' });
+        try {
+          await api.separateStems(deck.song.id);
+        } catch {
+          updateSongInDeck(deckId, { stems_status: 'error' });
+          setVocalMuted(deckId, false);
+        }
       }
-      // If processing, just wait — stems_ready handler will apply the mute
     } else {
       // Unmute — instant
       engine.setVocalMute(deckId, false);
@@ -53,20 +69,26 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
         deck.vocalMuted
           ? isProcessing
             ? 'bg-danger/80 text-white animate-pulse'
-            : 'bg-danger text-white shadow-lg shadow-danger/30'
-          : 'border border-border text-text-secondary hover:text-danger hover:border-danger/50'
+            : hasError
+              ? 'bg-danger/60 text-white'
+              : 'bg-danger text-white shadow-lg shadow-danger/30'
+          : hasError
+            ? 'border border-danger/50 text-danger'
+            : 'border border-border text-text-secondary hover:text-danger hover:border-danger/50'
       }`}
       title={
-        deck.vocalMuted
-          ? isProcessing
-            ? 'Separating stems... will apply automatically'
-            : 'Click to unmute vocals'
-          : 'Click to mute vocals'
+        hasError
+          ? 'Stem separation failed — click to retry'
+          : deck.vocalMuted
+            ? isProcessing
+              ? 'Separating stems... will apply automatically'
+              : 'Click to unmute vocals'
+            : 'Click to mute vocals'
       }
     >
       {deck.vocalMuted
-        ? isProcessing ? 'VOCALS OFF...' : 'VOCALS OFF'
-        : 'VOCAL MUTE'}
+        ? isProcessing ? 'VOCALS OFF...' : hasError ? 'ERROR' : 'VOCALS OFF'
+        : hasError ? 'RETRY' : 'VOCAL MUTE'}
     </button>
   );
 }

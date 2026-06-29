@@ -103,12 +103,12 @@ export function AudioEditor() {
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoading(false);
-      // Enable drag selection after ready
+      // Enable drag selection after ready (threshold=5 so clicks still seek)
       regionsPlugin.enableDragSelection({
         color: COLORS.cut,
         drag: true,
         resize: true,
-      });
+      }, 5);
     });
     ws.on('error', () => setIsLoading(false));
     ws.on('zoom', (minPxPerSec: number) => setZoomLevel(minPxPerSec));
