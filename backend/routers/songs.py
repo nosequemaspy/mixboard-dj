@@ -13,7 +13,7 @@ from models.stem import Stem
 from models.edit import EditedSong
 from models.category import Category
 from schemas.song import SongResponse, SongListResponse, SongUpdate
-from services.analysis import analyze_audio
+from services.analysis import analyze_audio_fast
 
 router = APIRouter(prefix="/api/songs", tags=["songs"])
 
@@ -106,7 +106,7 @@ async def upload_song(
 
     # Analyze in background-ish (but we need results)
     try:
-        analysis = await asyncio.to_thread(analyze_audio, str(dest))
+        analysis = await asyncio.to_thread(analyze_audio_fast, str(dest))
     except Exception:
         analysis = {"duration_seconds": 0, "bpm": None, "key": None, "waveform_peaks": None}
 

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from config import SONGS_DIR, SUPPORTED_FORMATS, YTDLP_AUDIO_QUALITY, MAX_DOWNLOAD_DURATION
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
-from services.analysis import analyze_audio
+from services.analysis import analyze_audio_fast, analyze_audio_full
 from services.storage import check_storage_available
 from websocket.manager import ws_manager
 
@@ -131,9 +131,8 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 if not found:
                     raise FileNotFoundError(f"Downloaded file not found: {safe_name}")
 
-            # Analyze
-            analysis = await asyncio.to_thread(analyze_audio, str(final_path))
-            await update_task_progress(db, task_id, 0.95, "running")
+            # Fast analysis (mutagen only - instant)
+            analysis = await asyncio.to_thread(analyze_audio_fast, str(final_path))
 
             song = Song(
                 title=final_title,
@@ -154,8 +153,28 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             await complete_task(db, task_id)
             await ws_manager.broadcast("song_added", {"song_id": song.id})
 
+            # Full analysis in background (BPM, key, waveform) - non-blocking
+            song_id = song.id
+            file_path_str = str(final_path)
+            asyncio.create_task(_background_analyze(db, song_id, file_path_str))
+
         except Exception as e:
             await complete_task(db, task_id, error=str(e))
 
     asyncio.create_task(_do_download())
     return task_id
+
+
+async def _background_analyze(db: Session, song_id: int, file_path: str):
+    """Run full librosa analysis in background and update the song."""
+    try:
+        analysis = await asyncio.to_thread(analyze_audio_full, file_path)
+        song = db.query(Song).filter(Song.id == song_id).first()
+        if song:
+            song.bpm = analysis["bpm"]
+            song.key = analysis["key"]
+            song.waveform_peaks = analysis["waveform_peaks"]
+            db.commit()
+            await ws_manager.broadcast("song_updated", {"song_id": song_id})
+    except Exception:
+        pass  # Analysis failure is non-critical
