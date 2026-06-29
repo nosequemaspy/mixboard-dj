@@ -1,20 +1,28 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import ZoomPlugin from 'wavesurfer.js/dist/plugins/zoom.esm.js';
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import type { Region } from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
 import type { Song, EditedSong } from '../../types';
 
-type SectionAction = 'keep' | 'cut' | 'mute';
+type RegionAction = 'cut' | 'mute';
 
-interface Section {
-  index: number;
-  start: number;
-  end: number;
-  action: SectionAction;
+interface TrackedRegion {
+  id: string;
+  region: Region;
+  action: RegionAction;
 }
+
+const COLORS = {
+  cut: 'rgba(239, 68, 68, 0.25)',
+  mute: 'rgba(245, 158, 11, 0.25)',
+  cutSelected: 'rgba(239, 68, 68, 0.45)',
+  muteSelected: 'rgba(245, 158, 11, 0.45)',
+};
 
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -28,8 +36,6 @@ export function AudioEditor() {
   const removeSongFromStore = useLibraryStore(s => s.removeSong);
 
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
-  const [splitPoints, setSplitPoints] = useState<number[]>([]);
-  const [sectionActions, setSectionActions] = useState<Record<number, SectionAction>>({});
   const [editName, setEditName] = useState('');
   const [edits, setEdits] = useState<EditedSong[]>([]);
   const [saving, setSaving] = useState(false);
@@ -41,31 +47,19 @@ export function AudioEditor() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [playingEditId, setPlayingEditId] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState(0);
+  const [regions, setRegions] = useState<TrackedRegion[]>([]);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
-  const waveScrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
+  const regionsRef = useRef<RegionsPlugin | null>(null);
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
-  const addSplitRef = useRef<() => void>(() => {});
 
-  // Derive sections from split points
-  const sections = useMemo((): Section[] => {
-    if (duration === 0) return [];
-    const sorted = [...splitPoints].sort((a, b) => a - b);
-    const points = [0, ...sorted, duration];
-    return points.slice(0, -1).map((start, i) => ({
-      index: i,
-      start,
-      end: points[i + 1],
-      action: sectionActions[i] || 'keep',
-    }));
-  }, [splitPoints, duration, sectionActions]);
-
-  const hasModifiedSections = sections.some(s => s.action !== 'keep');
   const canMuteVocals = selectedSong?.stems_status === 'ready';
+  const hasRegions = regions.length > 0;
 
-  // Initialize WaveSurfer with MediaElement backend for reliable playback
+  // Initialize WaveSurfer
   useEffect(() => {
     if (!waveContainerRef.current) return;
 
@@ -80,13 +74,15 @@ export function AudioEditor() {
       maxZoom: 200,
     });
 
+    const regionsPlugin = RegionsPlugin.create();
+
     const ws = WaveSurfer.create({
       container: waveContainerRef.current,
       waveColor: '#4f46e540',
       progressColor: '#6366f1',
       cursorColor: '#e2e8f0',
       cursorWidth: 2,
-      height: 110,
+      height: 120,
       barWidth: 2,
       barGap: 1,
       barRadius: 1,
@@ -97,7 +93,7 @@ export function AudioEditor() {
       autoCenter: true,
       minPxPerSec: 1,
       media: document.createElement('audio'),
-      plugins: [timelinePlugin, zoomPlugin],
+      plugins: [timelinePlugin, zoomPlugin, regionsPlugin],
     });
 
     ws.on('play', () => setIsPlaying(true));
@@ -107,28 +103,49 @@ export function AudioEditor() {
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoading(false);
+      // Enable drag selection after ready
+      regionsPlugin.enableDragSelection({
+        color: COLORS.cut,
+        drag: true,
+        resize: true,
+      });
     });
     ws.on('error', () => setIsLoading(false));
     ws.on('zoom', (minPxPerSec: number) => setZoomLevel(minPxPerSec));
 
+    // Region events
+    regionsPlugin.on('region-created', (region: Region) => {
+      const id = region.id;
+      setRegions(prev => [...prev, { id, region, action: 'cut' }]);
+      setSelectedRegionId(id);
+    });
+
+    regionsPlugin.on('region-updated', (region: Region) => {
+      // Force re-render to update times
+      setRegions(prev => prev.map(r =>
+        r.id === region.id ? { ...r, region } : r
+      ));
+    });
+
+    regionsPlugin.on('region-clicked', (region: Region, e: MouseEvent) => {
+      e.stopPropagation();
+      setSelectedRegionId(region.id);
+    });
+
+    // Deselect when clicking waveform outside regions
+    ws.on('click', () => {
+      setSelectedRegionId(null);
+    });
+
     wsRef.current = ws;
+    regionsRef.current = regionsPlugin;
 
     return () => {
       ws.destroy();
       wsRef.current = null;
+      regionsRef.current = null;
     };
   }, []);
-
-  // Keep addSplit ref up to date
-  const addSplit = useCallback(() => {
-    if (duration === 0) return;
-    const t = currentTime;
-    if (t < 0.2 || t > duration - 0.2) return;
-    if (splitPoints.some(p => Math.abs(p - t) < 0.3)) return;
-    setSplitPoints(prev => [...prev, t].sort((a, b) => a - b));
-  }, [currentTime, duration, splitPoints]);
-
-  addSplitRef.current = addSplit;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -139,14 +156,16 @@ export function AudioEditor() {
       if (e.code === 'Space') {
         e.preventDefault();
         wsRef.current?.playPause();
-      } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        addSplitRef.current();
+      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (selectedRegionId) {
+          e.preventDefault();
+          removeRegion(selectedRegionId);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [selectedRegionId]);
 
   // Load song into waveform
   useEffect(() => {
@@ -156,8 +175,9 @@ export function AudioEditor() {
     setCurrentTime(0);
     setDuration(0);
     setZoomLevel(0);
-    setSplitPoints([]);
-    setSectionActions({});
+    setRegions([]);
+    setSelectedRegionId(null);
+    regionsRef.current?.clearRegions();
 
     if (editAudioRef.current) {
       editAudioRef.current.pause();
@@ -197,61 +217,82 @@ export function AudioEditor() {
     wsRef.current.seekTo(time / duration);
   }, [duration]);
 
-  const removeSplit = useCallback((pointIndex: number) => {
-    setSplitPoints(prev => prev.filter((_, i) => i !== pointIndex));
-    setSectionActions({});
-  }, []);
+  const setRegionAction = useCallback((regionId: string, action: RegionAction) => {
+    setRegions(prev => prev.map(r => {
+      if (r.id !== regionId) return r;
+      const isSelected = regionId === selectedRegionId;
+      r.region.setOptions({
+        color: action === 'cut'
+          ? (isSelected ? COLORS.cutSelected : COLORS.cut)
+          : (isSelected ? COLORS.muteSelected : COLORS.mute),
+      });
+      return { ...r, action };
+    }));
+  }, [selectedRegionId]);
 
-  const clearSplits = useCallback(() => {
-    setSplitPoints([]);
-    setSectionActions({});
-  }, []);
-
-  const setSectionAction = useCallback((idx: number, action: SectionAction) => {
-    setSectionActions(prev => {
-      const next = { ...prev };
-      if (action === 'keep') delete next[idx];
-      else next[idx] = action;
-      return next;
+  const removeRegion = useCallback((regionId: string) => {
+    setRegions(prev => {
+      const found = prev.find(r => r.id === regionId);
+      if (found) found.region.remove();
+      return prev.filter(r => r.id !== regionId);
     });
+    if (selectedRegionId === regionId) setSelectedRegionId(null);
+  }, [selectedRegionId]);
+
+  const clearAllRegions = useCallback(() => {
+    regionsRef.current?.clearRegions();
+    setRegions([]);
+    setSelectedRegionId(null);
   }, []);
+
+  // Update region visual when selection changes
+  useEffect(() => {
+    regions.forEach(r => {
+      const isSelected = r.id === selectedRegionId;
+      const color = r.action === 'cut'
+        ? (isSelected ? COLORS.cutSelected : COLORS.cut)
+        : (isSelected ? COLORS.muteSelected : COLORS.mute);
+      r.region.setOptions({ color });
+    });
+  }, [selectedRegionId, regions]);
 
   const handleSave = async () => {
-    if (!selectedSong || !editName.trim() || !hasModifiedSections) return;
+    if (!selectedSong || !editName.trim() || !hasRegions) return;
     setSaving(true);
     try {
-      const cutSections = sections.filter(s => s.action === 'cut');
-      const muteSections = sections.filter(s => s.action === 'mute');
-      const keepSections = sections.filter(s => s.action === 'keep');
+      const cutRegions = regions.filter(r => r.action === 'cut');
+      const muteRegions = regions.filter(r => r.action === 'mute');
 
-      // If one keep section + only cuts → use trim (more efficient)
-      if (keepSections.length === 1 && muteSections.length === 0 && cutSections.length > 0) {
+      if (cutRegions.length === 1 && muteRegions.length === 0) {
+        // Single cut region — check if it's a trim (keep everything else)
+        const r = cutRegions[0].region;
+        // Use cut_section for explicit cuts
         await api.createEdit({
           song_id: selectedSong.id,
           name: editName.trim(),
-          edit_type: 'trim',
-          params: { start_seconds: keepSections[0].start, end_seconds: keepSections[0].end },
+          edit_type: 'cut_section',
+          params: { sections: [{ start: r.start, end: r.end }] },
         });
       } else {
-        if (cutSections.length > 0) {
+        if (cutRegions.length > 0) {
           await api.createEdit({
             song_id: selectedSong.id,
-            name: editName.trim() + (muteSections.length > 0 ? ' (cut)' : ''),
+            name: editName.trim() + (muteRegions.length > 0 ? ' (cut)' : ''),
             edit_type: 'cut_section',
-            params: { sections: cutSections.map(s => ({ start: s.start, end: s.end })) },
+            params: { sections: cutRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
           });
         }
-        if (muteSections.length > 0) {
+        if (muteRegions.length > 0) {
           await api.createEdit({
             song_id: selectedSong.id,
-            name: editName.trim() + (cutSections.length > 0 ? ' (vocal mute)' : ''),
+            name: editName.trim() + (cutRegions.length > 0 ? ' (vocal mute)' : ''),
             edit_type: 'vocal_mute_section',
-            params: { sections: muteSections.map(s => ({ start: s.start, end: s.end })) },
+            params: { sections: muteRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
           });
         }
       }
       loadEdits(selectedSong.id);
-      clearSplits();
+      clearAllRegions();
     } catch (e: any) {
       alert(e.message || 'Failed to save edit');
     } finally {
@@ -293,8 +334,8 @@ export function AudioEditor() {
         wsRef.current?.pause();
         setSelectedSong(null);
         loadedSongId.current = null;
-        setSplitPoints([]);
-        setSectionActions({});
+        setRegions([]);
+        setSelectedRegionId(null);
         setEdits([]);
       }
       setDeleteConfirm(null);
@@ -439,9 +480,9 @@ export function AudioEditor() {
             </div>
           )}
 
-          {/* Waveform with overlays */}
+          {/* Waveform timeline */}
           <div className="px-4 pt-3 pb-1">
-            <div ref={waveScrollRef} className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
+            <div className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
               {isLoading && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-sm text-text-muted">
@@ -454,42 +495,6 @@ export function AudioEditor() {
                 </div>
               )}
               <div ref={waveContainerRef} className="w-full" />
-
-              {/* Section color overlays + split markers */}
-              {duration > 0 && (
-                <div className="absolute top-0 pointer-events-none" style={{ height: '110px', left: 0, right: 0 }}>
-                  {sections.map(section => section.action !== 'keep' && (
-                    <div
-                      key={`s-${section.index}`}
-                      className="absolute top-0 bottom-0 transition-colors"
-                      style={{
-                        left: `${(section.start / duration) * 100}%`,
-                        width: `${((section.end - section.start) / duration) * 100}%`,
-                        backgroundColor: section.action === 'cut'
-                          ? 'rgba(239, 68, 68, 0.18)'
-                          : 'rgba(245, 158, 11, 0.18)',
-                      }}
-                    />
-                  ))}
-                  {splitPoints.map((point, i) => (
-                    <div
-                      key={`m-${i}`}
-                      className="absolute top-0 bottom-0 w-0.5"
-                      style={{
-                        left: `${(point / duration) * 100}%`,
-                        background: 'rgba(255,255,255,0.6)',
-                      }}
-                    >
-                      <div
-                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-white/80 bg-bg-primary"
-                        style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                        title={`Split @ ${formatTime(point)} — click to remove`}
-                        onClick={() => removeSplit(i)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Zoom slider */}
@@ -519,31 +524,7 @@ export function AudioEditor() {
             )}
           </div>
 
-          {/* Section overview bar */}
-          {splitPoints.length > 0 && duration > 0 && (
-            <div className="px-4 pb-1">
-              <div className="flex rounded-md overflow-hidden h-3 border border-border/30">
-                {sections.map(section => (
-                  <button
-                    key={section.index}
-                    onClick={() => seekTo(section.start)}
-                    className={`relative transition-colors cursor-pointer hover:brightness-125 ${
-                      section.action === 'keep' ? 'bg-success/25' :
-                      section.action === 'cut' ? 'bg-danger/35' : 'bg-warning/35'
-                    }`}
-                    style={{ width: `${((section.end - section.start) / duration) * 100}%` }}
-                    title={`${formatTime(section.start)} - ${formatTime(section.end)}: ${
-                      section.action === 'keep' ? 'Mantener' : section.action === 'cut' ? 'Cortar' : 'Mute Vocal'
-                    }`}
-                  >
-                    <div className="absolute right-0 top-0 bottom-0 w-px bg-border/60" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Transport controls */}
+          {/* Transport + region actions */}
           <div className="flex items-center gap-2 px-4 py-2">
             <button
               onClick={togglePlayback}
@@ -562,61 +543,53 @@ export function AudioEditor() {
 
             <div className="w-px h-5 bg-border/50 mx-1" />
 
-            {/* Split button */}
-            <button
-              onClick={addSplit}
-              disabled={isLoading || duration === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-primary border border-border/60 rounded-lg text-xs font-medium text-text-primary hover:bg-bg-hover hover:border-accent/40 disabled:opacity-40 transition-all group"
-              title="Dividir en la posicion actual (S)"
-            >
-              <svg className="w-4 h-4 text-text-muted group-hover:text-accent transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
-                <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" />
-                <line x1="8.12" y1="8.12" x2="12" y2="12" />
-              </svg>
-              Dividir
-              <kbd className="text-[9px] text-text-muted bg-bg-tertiary px-1 py-0.5 rounded ml-0.5 font-mono">S</kbd>
-            </button>
+            {/* Hint */}
+            {!hasRegions && duration > 0 && (
+              <span className="text-[10px] text-text-muted">
+                Arrastra sobre la forma de onda para seleccionar una zona
+              </span>
+            )}
 
             <div className="flex-1" />
 
-            {splitPoints.length > 0 && (
-              <Button size="sm" variant="ghost" onClick={clearSplits}>
+            {hasRegions && (
+              <Button size="sm" variant="ghost" onClick={clearAllRegions}>
                 Limpiar todo
               </Button>
             )}
           </div>
 
-          {/* Sections list + Save + Saved edits */}
+          {/* Regions list + Save + Saved edits */}
           <div className="flex-1 overflow-y-auto px-4 pb-3">
-            {/* Sections */}
-            {sections.length > 1 && (
+            {/* Region list */}
+            {hasRegions && (
               <div className="mb-3">
                 <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-1.5">
-                  Secciones ({sections.length})
+                  Selecciones ({regions.length})
                 </div>
                 <div className="space-y-1">
-                  {sections.map(section => (
+                  {regions.map(({ id, region, action }) => (
                     <div
-                      key={section.index}
-                      className={`flex items-center gap-2 bg-bg-primary border rounded-md px-2.5 py-1.5 transition-colors ${
-                        section.action === 'keep' ? 'border-border/40' :
-                        section.action === 'cut' ? 'border-danger/30' : 'border-warning/30'
+                      key={id}
+                      onClick={() => { setSelectedRegionId(id); seekTo(region.start); }}
+                      className={`flex items-center gap-2 bg-bg-primary border rounded-md px-2.5 py-1.5 cursor-pointer transition-colors ${
+                        selectedRegionId === id
+                          ? action === 'cut' ? 'border-danger/60 bg-danger/5' : 'border-warning/60 bg-warning/5'
+                          : 'border-border/40 hover:border-border'
                       }`}
                     >
                       <button
-                        onClick={() => seekTo(section.start)}
+                        onClick={(e) => { e.stopPropagation(); seekTo(region.start); }}
                         className="text-[10px] font-mono text-accent hover:underline cursor-pointer flex-shrink-0"
-                        title="Ir a esta seccion"
                       >
-                        {formatTime(section.start)}
+                        {formatTime(region.start)}
                       </button>
                       <span className="text-[10px] text-text-muted">→</span>
                       <span className="text-[10px] font-mono text-text-secondary flex-shrink-0">
-                        {formatTime(section.end)}
+                        {formatTime(region.end)}
                       </span>
                       <span className="text-[10px] text-text-muted/60 font-mono">
-                        ({formatTime(section.end - section.start)})
+                        ({formatTime(region.end - region.start)})
                       </span>
 
                       <div className="flex-1" />
@@ -624,19 +597,9 @@ export function AudioEditor() {
                       {/* Action buttons */}
                       <div className="flex bg-bg-secondary rounded-md p-0.5 gap-0.5">
                         <button
-                          onClick={() => setSectionAction(section.index, 'keep')}
+                          onClick={(e) => { e.stopPropagation(); setRegionAction(id, 'cut'); }}
                           className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                            section.action === 'keep'
-                              ? 'bg-success/20 text-success shadow-sm'
-                              : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
-                          }`}
-                        >
-                          Mantener
-                        </button>
-                        <button
-                          onClick={() => setSectionAction(section.index, 'cut')}
-                          className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                            section.action === 'cut'
+                            action === 'cut'
                               ? 'bg-danger/20 text-danger shadow-sm'
                               : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
                           }`}
@@ -644,22 +607,33 @@ export function AudioEditor() {
                           Cortar
                         </button>
                         <button
-                          onClick={() => setSectionAction(section.index, 'mute')}
+                          onClick={(e) => { e.stopPropagation(); setRegionAction(id, 'mute'); }}
                           disabled={!canMuteVocals}
                           className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                            section.action === 'mute'
+                            action === 'mute'
                               ? 'bg-warning/20 text-warning shadow-sm'
                               : 'text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed'
                           }`}
-                          title={canMuteVocals ? 'Silenciar vocales en esta seccion' : 'Los stems deben separarse primero'}
+                          title={canMuteVocals ? 'Silenciar vocales en esta zona' : 'Los stems deben separarse primero'}
                         >
                           Mute Vocal
                         </button>
                       </div>
+
+                      {/* Remove button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeRegion(id); }}
+                        className="text-text-muted hover:text-danger p-0.5 transition-colors"
+                        title="Eliminar seleccion"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
                   ))}
                 </div>
-                {!canMuteVocals && sections.some(s => s.action === 'mute') && (
+                {!canMuteVocals && regions.some(r => r.action === 'mute') && (
                   <p className="text-[10px] text-warning mt-1.5 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -671,7 +645,7 @@ export function AudioEditor() {
             )}
 
             {/* Save form */}
-            {hasModifiedSections && (
+            {hasRegions && (
               <div className="bg-bg-primary border border-border/50 rounded-lg p-3 mb-3">
                 <div className="flex items-center gap-2">
                   <input
@@ -698,30 +672,29 @@ export function AudioEditor() {
                   </Button>
                 </div>
                 <p className="text-[10px] text-text-muted mt-1.5">
-                  {sections.filter(s => s.action === 'cut').length > 0 && (
-                    <span className="text-danger">{sections.filter(s => s.action === 'cut').length} seccion(es) se eliminaran. </span>
+                  {regions.filter(r => r.action === 'cut').length > 0 && (
+                    <span className="text-danger">{regions.filter(r => r.action === 'cut').length} zona(s) se cortaran. </span>
                   )}
-                  {sections.filter(s => s.action === 'mute').length > 0 && (
-                    <span className="text-warning">{sections.filter(s => s.action === 'mute').length} seccion(es) tendran vocales silenciadas.</span>
+                  {regions.filter(r => r.action === 'mute').length > 0 && (
+                    <span className="text-warning">{regions.filter(r => r.action === 'mute').length} zona(s) tendran vocales silenciadas.</span>
                   )}
                 </p>
               </div>
             )}
 
-            {/* Help text when no splits */}
-            {splitPoints.length === 0 && !isLoading && duration > 0 && edits.length === 0 && (
+            {/* Help text when no regions */}
+            {!hasRegions && !isLoading && duration > 0 && edits.length === 0 && (
               <div className="flex flex-col items-center justify-center py-6 text-text-muted">
                 <svg className="w-10 h-10 mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
-                  <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" />
-                  <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18M15 3v18" />
                 </svg>
-                <p className="text-xs font-medium">Divide la cancion en secciones</p>
+                <p className="text-xs font-medium">Arrastra sobre la forma de onda</p>
                 <p className="text-[10px] mt-1 text-text-muted/60">
-                  Posiciona el cursor y presiona <strong className="text-text-secondary">Dividir</strong> o la tecla <kbd className="bg-bg-tertiary px-1 py-0.5 rounded font-mono text-text-secondary">S</kbd>
+                  Click y arrastra para seleccionar una zona, luego elige <strong className="text-danger">Cortar</strong> o <strong className="text-warning">Mute Vocal</strong>
                 </p>
                 <p className="text-[10px] mt-0.5 text-text-muted/60">
-                  Luego marca cada seccion como Mantener, Cortar, o Mute Vocal
+                  Usa la rueda del mouse para hacer zoom y ver los detalles
                 </p>
               </div>
             )}

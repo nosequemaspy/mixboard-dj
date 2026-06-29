@@ -229,6 +229,37 @@ export class AudioEngine {
     return deck.bufferOriginal.duration;
   }
 
+  // Hot-load instrumental stem while song may be playing (for instant vocal mute)
+  async loadInstrumentalHot(deckId: DeckId, songId: number): Promise<boolean> {
+    const deck = this.decks.get(deckId)!;
+    try {
+      const response = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
+      const data = await response.arrayBuffer();
+      deck.bufferInstrumental = await this.ctx.decodeAudioData(data);
+
+      // If currently playing, start instrumental source at correct offset
+      if (deck.isPlaying) {
+        const elapsed = (this.ctx.currentTime - deck.startTime) * deck.playbackRate;
+        const currentOffset = deck.pauseOffset + elapsed;
+
+        if (deck.sourceInstrumental) {
+          try { deck.sourceInstrumental.stop(); } catch {}
+          deck.sourceInstrumental.disconnect();
+        }
+
+        const srcInst = this.ctx.createBufferSource();
+        srcInst.buffer = deck.bufferInstrumental;
+        srcInst.playbackRate.value = deck.playbackRate;
+        srcInst.connect(deck.gainInstrumental);
+        deck.sourceInstrumental = srcInst;
+        srcInst.start(0, currentOffset);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   play(deckId: DeckId) {
     if (this.ctx.state === 'suspended') this.ctx.resume();
     const deck = this.decks.get(deckId)!;

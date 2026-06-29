@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { DeckId } from '../../types';
 import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
@@ -13,65 +12,61 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
   const setVocalMuted = useDeckStore(s => s.setVocalMuted);
   const updateSongInDeck = useDeckStore(s => s.updateSongInDeck);
   const engine = getAudioEngine();
-  const [separating, setSeparating] = useState(false);
 
   const stemsStatus = deck.song?.stems_status;
   const hasStemsReady = stemsStatus === 'ready';
-  const isProcessing = stemsStatus === 'processing' || separating;
+  const isProcessing = stemsStatus === 'processing';
 
   const handleToggle = async () => {
     if (!deck.song) return;
 
-    if (hasStemsReady) {
-      // Normal toggle
-      const newValue = !deck.vocalMuted;
-      engine.setVocalMute(deckId, newValue);
-      setVocalMuted(deckId, newValue);
-      return;
-    }
+    const newMuted = !deck.vocalMuted;
+    // Immediately update UI
+    setVocalMuted(deckId, newMuted);
 
-    if (isProcessing) return;
-
-    // Auto-trigger stem separation
-    try {
-      setSeparating(true);
-      updateSongInDeck(deckId, { stems_status: 'processing' });
-      await api.separateStems(deck.song.id);
-      // stems_ready websocket event will update the song status
-    } catch {
-      setSeparating(false);
-      updateSongInDeck(deckId, { stems_status: 'none' });
+    if (newMuted) {
+      if (hasStemsReady) {
+        // Stems ready — apply audio mute instantly
+        engine.setVocalMute(deckId, true);
+      } else if (!isProcessing) {
+        // Trigger separation in background — websocket will hot-load when done
+        updateSongInDeck(deckId, { stems_status: 'processing' });
+        try {
+          await api.separateStems(deck.song.id);
+        } catch {
+          updateSongInDeck(deckId, { stems_status: 'none' });
+          setVocalMuted(deckId, false);
+        }
+      }
+      // If processing, just wait — stems_ready handler will apply the mute
+    } else {
+      // Unmute — instant
+      engine.setVocalMute(deckId, false);
     }
   };
-
-  const label = deck.vocalMuted
-    ? 'VOCALS OFF'
-    : isProcessing
-      ? 'SEPARATING...'
-      : 'VOCAL MUTE';
 
   return (
     <button
       onClick={handleToggle}
-      disabled={isProcessing}
+      disabled={!deck.song}
       className={`px-3 py-1 rounded text-xs font-bold transition-all ${
         deck.vocalMuted
-          ? 'bg-danger text-white shadow-lg shadow-danger/30'
-          : isProcessing
-            ? 'border border-warning/50 text-warning animate-pulse'
-            : hasStemsReady
-              ? 'border border-border text-text-secondary hover:text-danger hover:border-danger/50'
-              : 'border border-border/50 text-text-muted hover:text-warning hover:border-warning/50'
+          ? isProcessing
+            ? 'bg-danger/80 text-white animate-pulse'
+            : 'bg-danger text-white shadow-lg shadow-danger/30'
+          : 'border border-border text-text-secondary hover:text-danger hover:border-danger/50'
       }`}
       title={
-        hasStemsReady
-          ? 'Toggle vocal mute'
-          : isProcessing
-            ? 'Separating stems...'
-            : 'Click to separate stems and enable vocal mute'
+        deck.vocalMuted
+          ? isProcessing
+            ? 'Separating stems... will apply automatically'
+            : 'Click to unmute vocals'
+          : 'Click to mute vocals'
       }
     >
-      {label}
+      {deck.vocalMuted
+        ? isProcessing ? 'VOCALS OFF...' : 'VOCALS OFF'
+        : 'VOCAL MUTE'}
     </button>
   );
 }

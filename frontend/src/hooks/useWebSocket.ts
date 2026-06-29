@@ -3,6 +3,7 @@ import { wsClient } from '../api/websocket';
 import { useMixerStore } from '../store/mixerStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { useDeckStore } from '../store/deckStore';
+import { getAudioEngine } from './useAudioEngine';
 
 export function useWebSocket() {
   const updateTask = useMixerStore(s => s.updateTask);
@@ -26,17 +27,25 @@ export function useWebSocket() {
       fetchSongs();
     });
 
-    const unsub4 = wsClient.on('stems_ready', (data) => {
+    const unsub4 = wsClient.on('stems_ready', async (data) => {
       fetchSongs();
-      // Update deck song if stems are now ready for the loaded song
       const songId = data?.song_id;
-      if (songId) {
-        const { deckA, deckB, updateSongInDeck } = useDeckStore.getState();
-        if (deckA.song?.id === songId) {
-          updateSongInDeck('A', { stems_status: 'ready' });
-        }
-        if (deckB.song?.id === songId) {
-          updateSongInDeck('B', { stems_status: 'ready' });
+      if (!songId) return;
+
+      const { deckA, deckB, updateSongInDeck } = useDeckStore.getState();
+      const engine = getAudioEngine();
+
+      // For each deck: update status, hot-load instrumental, apply mute if pending
+      for (const [deckId, deck] of [['A', deckA], ['B', deckB]] as const) {
+        if (deck.song?.id !== songId) continue;
+        updateSongInDeck(deckId, { stems_status: 'ready' });
+
+        // If user already toggled vocal mute, hot-load and apply
+        if (deck.vocalMuted) {
+          const loaded = await engine.loadInstrumentalHot(deckId, songId);
+          if (loaded) {
+            engine.setVocalMute(deckId, true);
+          }
         }
       }
     });
