@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
-import ZoomPlugin from 'wavesurfer.js/dist/plugins/zoom.esm.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import type { Region } from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -43,11 +42,11 @@ export function AudioEditor() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [playingEditId, setPlayingEditId] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [regions, setRegions] = useState<TrackedRegion[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
@@ -63,17 +62,6 @@ export function AudioEditor() {
   // Initialize WaveSurfer
   useEffect(() => {
     if (!waveContainerRef.current) return;
-
-    const timelinePlugin = TimelinePlugin.create({
-      timeInterval: 5,
-      primaryLabelInterval: 10,
-      style: { fontSize: '10px', color: '#64748b' },
-    });
-
-    const zoomPlugin = ZoomPlugin.create({
-      scale: 0.2,
-      maxZoom: 200,
-    });
 
     const regionsPlugin = RegionsPlugin.create();
 
@@ -93,28 +81,36 @@ export function AudioEditor() {
       autoScroll: true,
       autoCenter: true,
       minPxPerSec: 1,
-      media: document.createElement('audio'),
-      plugins: [timelinePlugin, zoomPlugin, regionsPlugin],
+      plugins: [
+        TimelinePlugin.create({
+          timeInterval: 5,
+          primaryLabelInterval: 10,
+          style: { fontSize: '10px', color: '#64748b' },
+        }),
+        regionsPlugin,
+      ],
     });
 
     ws.on('play', () => setIsPlaying(true));
     ws.on('pause', () => setIsPlaying(false));
     ws.on('finish', () => setIsPlaying(false));
     ws.on('timeupdate', (t: number) => setCurrentTime(t));
-    ws.on('loading', (percent: number) => setLoadingProgress(percent));
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoading(false);
-      setLoadingProgress(100);
-      // Enable drag selection after ready (threshold=5 so clicks still seek)
+      setLoadError(null);
+      // Enable drag selection (threshold=5 so clicks still seek)
       regionsPlugin.enableDragSelection({
         color: COLORS.cut,
         drag: true,
         resize: true,
       }, 5);
     });
-    ws.on('error', () => setIsLoading(false));
-    ws.on('zoom', (minPxPerSec: number) => setZoomLevel(minPxPerSec));
+    ws.on('error', (err: any) => {
+      console.error('WaveSurfer error:', err);
+      setIsLoading(false);
+      setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
+    });
 
     // Region events
     regionsPlugin.on('region-created', (region: Region) => {
@@ -124,7 +120,6 @@ export function AudioEditor() {
     });
 
     regionsPlugin.on('region-updated', (region: Region) => {
-      // Force re-render to update times
       setRegions(prev => prev.map(r =>
         r.id === region.id ? { ...r, region } : r
       ));
@@ -135,7 +130,6 @@ export function AudioEditor() {
       setSelectedRegionId(region.id);
     });
 
-    // Deselect when clicking waveform outside regions
     ws.on('click', () => {
       setSelectedRegionId(null);
     });
@@ -175,10 +169,10 @@ export function AudioEditor() {
     if (!wsRef.current || !selectedSong || selectedSong.id === loadedSongId.current) return;
     loadedSongId.current = selectedSong.id;
     setIsLoading(true);
-    setLoadingProgress(0);
+    setLoadError(null);
     setCurrentTime(0);
     setDuration(0);
-    setZoomLevel(0);
+    setZoomLevel(1);
     setRegions([]);
     setSelectedRegionId(null);
     regionsRef.current?.clearRegions();
@@ -220,6 +214,11 @@ export function AudioEditor() {
     if (!wsRef.current || duration === 0) return;
     wsRef.current.seekTo(time / duration);
   }, [duration]);
+
+  const handleZoom = useCallback((newLevel: number) => {
+    setZoomLevel(newLevel);
+    wsRef.current?.zoom(newLevel);
+  }, []);
 
   const setRegionAction = useCallback((regionId: string, action: RegionAction) => {
     setRegions(prev => prev.map(r => {
@@ -267,38 +266,26 @@ export function AudioEditor() {
       const cutRegions = regions.filter(r => r.action === 'cut');
       const muteRegions = regions.filter(r => r.action === 'mute');
 
-      if (cutRegions.length === 1 && muteRegions.length === 0) {
-        // Single cut region — check if it's a trim (keep everything else)
-        const r = cutRegions[0].region;
-        // Use cut_section for explicit cuts
+      if (cutRegions.length > 0) {
         await api.createEdit({
           song_id: selectedSong.id,
-          name: editName.trim(),
+          name: editName.trim() + (muteRegions.length > 0 ? ' (corte)' : ''),
           edit_type: 'cut_section',
-          params: { sections: [{ start: r.start, end: r.end }] },
+          params: { sections: cutRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
         });
-      } else {
-        if (cutRegions.length > 0) {
-          await api.createEdit({
-            song_id: selectedSong.id,
-            name: editName.trim() + (muteRegions.length > 0 ? ' (cut)' : ''),
-            edit_type: 'cut_section',
-            params: { sections: cutRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
-          });
-        }
-        if (muteRegions.length > 0) {
-          await api.createEdit({
-            song_id: selectedSong.id,
-            name: editName.trim() + (cutRegions.length > 0 ? ' (vocal mute)' : ''),
-            edit_type: 'vocal_mute_section',
-            params: { sections: muteRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
-          });
-        }
+      }
+      if (muteRegions.length > 0) {
+        await api.createEdit({
+          song_id: selectedSong.id,
+          name: editName.trim() + (cutRegions.length > 0 ? ' (vocal mute)' : ''),
+          edit_type: 'vocal_mute_section',
+          params: { sections: muteRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
+        });
       }
       loadEdits(selectedSong.id);
       clearAllRegions();
     } catch (e: any) {
-      alert(e.message || 'Failed to save edit');
+      alert(e.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -344,7 +331,7 @@ export function AudioEditor() {
       }
       setDeleteConfirm(null);
     } catch (e: any) {
-      alert(e.message || 'Failed to delete song');
+      alert(e.message || 'Error al eliminar');
     }
   };
 
@@ -368,7 +355,7 @@ export function AudioEditor() {
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="Buscar..."
               className="w-full bg-bg-primary border border-border/60 rounded-md pl-7 pr-2 py-1 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
             />
           </div>
@@ -413,7 +400,7 @@ export function AudioEditor() {
                   <a
                     href={api.downloadUrl(song.id)}
                     className="text-text-muted hover:text-accent p-1"
-                    title="Descargar a PC"
+                    title="Descargar"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -422,7 +409,7 @@ export function AudioEditor() {
                   <button
                     onClick={() => setDeleteConfirm(song.id)}
                     className="text-text-muted hover:text-danger p-1"
-                    title="Eliminar cancion"
+                    title="Eliminar"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -433,7 +420,7 @@ export function AudioEditor() {
             </div>
           ))}
           {filteredSongs.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-text-muted">No songs found</div>
+            <div className="px-3 py-6 text-center text-xs text-text-muted">No se encontraron canciones</div>
           )}
         </div>
       </div>
@@ -459,7 +446,7 @@ export function AudioEditor() {
                   <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold ml-1">STEMS READY</span>
                 )}
                 {selectedSong.stems_status === 'processing' && (
-                  <span className="text-[9px] bg-warning/15 text-warning px-1.5 py-0.5 rounded font-bold ml-1">PROCESSING STEMS...</span>
+                  <span className="text-[9px] bg-warning/15 text-warning px-1.5 py-0.5 rounded font-bold ml-1 animate-pulse">PROCESANDO STEMS...</span>
                 )}
               </div>
             </div>
@@ -486,16 +473,41 @@ export function AudioEditor() {
 
           {/* Waveform timeline */}
           <div className="px-4 pt-3 pb-1">
-            <div className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
+            <div
+              className="relative bg-bg-primary rounded-lg border border-border/50"
+              style={{ overflowX: 'auto', overflowY: 'hidden' }}
+              onWheel={e => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.preventDefault();
+                  const delta = e.deltaY > 0 ? -10 : 10;
+                  const newZoom = Math.max(1, Math.min(200, zoomLevel + delta));
+                  handleZoom(newZoom);
+                }
+              }}
+            >
               {isLoading && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/80 backdrop-blur-sm gap-2">
-                  <span className="text-xs text-text-muted">Cargando audio... {loadingProgress}%</span>
-                  <div className="w-48 h-1.5 bg-border/30 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-accent rounded-full transition-all duration-300"
-                      style={{ width: `${loadingProgress}%` }}
-                    />
-                  </div>
+                  <svg className="animate-spin w-6 h-6 text-accent" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  <span className="text-xs text-text-muted">Cargando audio...</span>
+                </div>
+              )}
+              {loadError && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/90 gap-2">
+                  <span className="text-xs text-danger">{loadError}</span>
+                  <button
+                    onClick={() => {
+                      if (wsRef.current && selectedSong) {
+                        loadedSongId.current = null;
+                        setSelectedSong({ ...selectedSong });
+                      }
+                    }}
+                    className="text-[10px] text-accent hover:underline"
+                  >
+                    Reintentar
+                  </button>
                 </div>
               )}
               <div ref={waveContainerRef} className="w-full" />
@@ -509,21 +521,17 @@ export function AudioEditor() {
                 </svg>
                 <input
                   type="range"
-                  min="0"
+                  min="1"
                   max="200"
                   step="1"
                   value={zoomLevel}
-                  onChange={e => {
-                    const v = Number(e.target.value);
-                    setZoomLevel(v);
-                    wsRef.current?.zoom(v);
-                  }}
+                  onChange={e => handleZoom(Number(e.target.value))}
                   className="flex-1 h-1 accent-accent"
                 />
                 <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><path d="M8 11h6M11 8v6" />
                 </svg>
-                <span className="text-[10px] text-text-muted font-mono min-w-[32px] text-right">{zoomLevel}px</span>
+                <span className="text-[10px] text-text-muted font-mono min-w-[32px] text-right">{zoomLevel}x</span>
               </div>
             )}
           </div>
@@ -550,7 +558,7 @@ export function AudioEditor() {
             {/* Hint */}
             {!hasRegions && duration > 0 && (
               <span className="text-[10px] text-text-muted">
-                Arrastra sobre la forma de onda para seleccionar una zona
+                Arrastra sobre la forma de onda para seleccionar una zona · Ctrl+Scroll para zoom
               </span>
             )}
 
@@ -588,7 +596,7 @@ export function AudioEditor() {
                       >
                         {formatTime(region.start)}
                       </button>
-                      <span className="text-[10px] text-text-muted">→</span>
+                      <span className="text-[10px] text-text-muted">{'\u2192'}</span>
                       <span className="text-[10px] font-mono text-text-secondary flex-shrink-0">
                         {formatTime(region.end)}
                       </span>
@@ -618,7 +626,7 @@ export function AudioEditor() {
                               ? 'bg-warning/20 text-warning shadow-sm'
                               : 'text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed'
                           }`}
-                          title={canMuteVocals ? 'Silenciar vocales en esta zona' : 'Los stems deben separarse primero'}
+                          title={canMuteVocals ? 'Reducir vocales en esta zona' : 'Primero separa los stems'}
                         >
                           Mute Vocal
                         </button>
@@ -680,14 +688,14 @@ export function AudioEditor() {
                     <span className="text-danger">{regions.filter(r => r.action === 'cut').length} zona(s) se cortaran. </span>
                   )}
                   {regions.filter(r => r.action === 'mute').length > 0 && (
-                    <span className="text-warning">{regions.filter(r => r.action === 'mute').length} zona(s) tendran vocales silenciadas.</span>
+                    <span className="text-warning">{regions.filter(r => r.action === 'mute').length} zona(s) tendran vocales reducidas.</span>
                   )}
                 </p>
               </div>
             )}
 
             {/* Help text when no regions */}
-            {!hasRegions && !isLoading && duration > 0 && edits.length === 0 && (
+            {!hasRegions && !isLoading && !loadError && duration > 0 && edits.length === 0 && (
               <div className="flex flex-col items-center justify-center py-6 text-text-muted">
                 <svg className="w-10 h-10 mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -698,7 +706,7 @@ export function AudioEditor() {
                   Click y arrastra para seleccionar una zona, luego elige <strong className="text-danger">Cortar</strong> o <strong className="text-warning">Mute Vocal</strong>
                 </p>
                 <p className="text-[10px] mt-0.5 text-text-muted/60">
-                  Usa la rueda del mouse para hacer zoom y ver los detalles
+                  Ctrl + rueda del mouse para hacer zoom
                 </p>
               </div>
             )}
@@ -747,7 +755,7 @@ export function AudioEditor() {
                         href={api.editStreamUrl(edit.id)}
                         download={`${edit.name}.mp3`}
                         className="w-7 h-7 rounded-full bg-success/10 hover:bg-success/20 text-success flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-                        title="Descargar audio editado"
+                        title="Descargar"
                       >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -756,7 +764,7 @@ export function AudioEditor() {
                       <button
                         onClick={() => handleDeleteEdit(edit.id)}
                         className="w-7 h-7 rounded-full bg-danger/10 hover:bg-danger/20 text-danger flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-                        title="Eliminar edit"
+                        title="Eliminar"
                       >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

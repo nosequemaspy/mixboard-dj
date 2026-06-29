@@ -36,15 +36,24 @@ async def separate_stems(db: Session, song_id: int) -> str:
 
             await update_task_progress(db, task_id, 0.2, "running")
 
-            # Create instrumental using ffmpeg center-channel removal
-            # This cancels vocals (center-panned) by subtracting L from R
+            # Create instrumental using ffmpeg partial center reduction
+            # Reduces center-panned content (vocals) by ~60% while preserving
+            # the mix fullness with bass/treble compensation
             instrumental_path = output_dir / "instrumental.mp3"
 
             def run_ffmpeg():
+                # Partial center cancellation (0.7 instead of 1.0) + EQ compensation
+                # so the track still sounds full instead of hollow/silent
+                af_filter = (
+                    "pan=stereo|c0=c0-0.7*c1|c1=c1-0.7*c0,"
+                    "lowshelf=f=250:g=4,"
+                    "highshelf=f=3000:g=3,"
+                    "dynaudnorm=p=0.9"
+                )
                 cmd = [
                     "ffmpeg", "-y",
                     "-i", str(song_file),
-                    "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
+                    "-af", af_filter,
                     "-b:a", "320k",
                     str(instrumental_path),
                 ]
@@ -70,7 +79,7 @@ async def separate_stems(db: Session, song_id: int) -> str:
                 song_id=song_id,
                 stem_type="instrumental",
                 file_path=str(instrumental_path.relative_to(STEMS_DIR.parent.parent)),
-                model_used="ffmpeg-center-cancel",
+                model_used="ffmpeg-vocal-reduce",
             )
             db.add(stem)
 
