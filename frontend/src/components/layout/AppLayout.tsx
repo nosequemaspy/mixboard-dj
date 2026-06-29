@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Header } from './Header';
 import { DeckPanel } from '../deck/DeckPanel';
 import { MixerPanel } from '../mixer/MixerPanel';
@@ -7,9 +8,15 @@ import { DownloadPanel } from '../download/DownloadPanel';
 import { AudioEditor } from '../editor/AudioEditor';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { useMixerStore } from '../../store/mixerStore';
+import { useLibraryStore } from '../../store/libraryStore';
 
 export function AppLayout() {
   const activePanel = useMixerStore(s => s.activePanel);
+
+  // Load songs globally so they're available in Sessions, Editor, etc.
+  useEffect(() => {
+    useLibraryStore.getState().fetchSongs();
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-bg-primary">

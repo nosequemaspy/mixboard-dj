@@ -2,6 +2,7 @@ import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { Knob } from '../shared/Knob';
 import { VUMeter } from './VUMeter';
+import { Crossfader } from './Crossfader';
 
 export function MixerPanel() {
   const store = useDeckStore();
@@ -19,8 +20,7 @@ export function MixerPanel() {
     store.setVolume('B', v);
   };
 
-  const handleCrossfader = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleCrossfader = (v: number) => {
     engine.setCrossfader(v);
     store.setCrossfader(v);
   };
@@ -91,13 +91,7 @@ export function MixerPanel() {
           <span>CROSSFADER</span>
           <span className="text-deck-b">B</span>
         </div>
-        <input
-          type="range"
-          min="-1" max="1" step="0.01"
-          value={store.crossfader}
-          onChange={handleCrossfader}
-          className="w-full"
-        />
+        <Crossfader value={store.crossfader} onChange={handleCrossfader} />
       </div>
     </div>
   );

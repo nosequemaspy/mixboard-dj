@@ -22,6 +22,7 @@ interface DeckStore {
   crossfader: number; // -1 = full A, 0 = center, 1 = full B
   getDeck: (id: DeckId) => DeckState;
   loadSong: (id: DeckId, song: Song) => void;
+  updateSongInDeck: (id: DeckId, updates: Partial<Song>) => void;
   setPlaying: (id: DeckId, playing: boolean) => void;
   setCurrentTime: (id: DeckId, time: number) => void;
   setDuration: (id: DeckId, duration: number) => void;
@@ -48,6 +49,14 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       vocalMuted: false,
     },
   })),
+  updateSongInDeck: (id, updates) => set(state => {
+    const key = id === 'A' ? 'deckA' : 'deckB';
+    const deck = state[key];
+    if (!deck.song) return {};
+    return {
+      [key]: { ...deck, song: { ...deck.song, ...updates } },
+    };
+  }),
   setPlaying: (id, playing) => set(state => ({
     [id === 'A' ? 'deckA' : 'deckB']: {
       ...state[id === 'A' ? 'deckA' : 'deckB'],

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { wsClient } from '../api/websocket';
 import { useMixerStore } from '../store/mixerStore';
 import { useLibraryStore } from '../store/libraryStore';
+import { useDeckStore } from '../store/deckStore';
 
 export function useWebSocket() {
   const updateTask = useMixerStore(s => s.updateTask);
@@ -25,8 +26,19 @@ export function useWebSocket() {
       fetchSongs();
     });
 
-    const unsub4 = wsClient.on('stems_ready', () => {
+    const unsub4 = wsClient.on('stems_ready', (data) => {
       fetchSongs();
+      // Update deck song if stems are now ready for the loaded song
+      const songId = data?.song_id;
+      if (songId) {
+        const { deckA, deckB, updateSongInDeck } = useDeckStore.getState();
+        if (deckA.song?.id === songId) {
+          updateSongInDeck('A', { stems_status: 'ready' });
+        }
+        if (deckB.song?.id === songId) {
+          updateSongInDeck('B', { stems_status: 'ready' });
+        }
+      }
     });
 
     return () => {

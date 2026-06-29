@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
+import ZoomPlugin from 'wavesurfer.js/dist/plugins/zoom.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
@@ -39,8 +40,10 @@ export function AudioEditor() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [playingEditId, setPlayingEditId] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(0);
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
+  const waveScrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -72,6 +75,11 @@ export function AudioEditor() {
       style: { fontSize: '10px', color: '#64748b' },
     });
 
+    const zoomPlugin = ZoomPlugin.create({
+      scale: 0.2,
+      maxZoom: 200,
+    });
+
     const ws = WaveSurfer.create({
       container: waveContainerRef.current,
       waveColor: '#4f46e540',
@@ -84,9 +92,12 @@ export function AudioEditor() {
       barRadius: 1,
       normalize: true,
       interact: true,
-      hideScrollbar: true,
+      hideScrollbar: false,
+      autoScroll: true,
+      autoCenter: true,
+      minPxPerSec: 1,
       media: document.createElement('audio'),
-      plugins: [timelinePlugin],
+      plugins: [timelinePlugin, zoomPlugin],
     });
 
     ws.on('play', () => setIsPlaying(true));
@@ -98,6 +109,7 @@ export function AudioEditor() {
       setIsLoading(false);
     });
     ws.on('error', () => setIsLoading(false));
+    ws.on('zoom', (minPxPerSec: number) => setZoomLevel(minPxPerSec));
 
     wsRef.current = ws;
 
@@ -143,6 +155,7 @@ export function AudioEditor() {
     setIsLoading(true);
     setCurrentTime(0);
     setDuration(0);
+    setZoomLevel(0);
     setSplitPoints([]);
     setSectionActions({});
 
@@ -428,7 +441,7 @@ export function AudioEditor() {
 
           {/* Waveform with overlays */}
           <div className="px-4 pt-3 pb-1">
-            <div className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
+            <div ref={waveScrollRef} className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
               {isLoading && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm">
                   <div className="flex items-center gap-2 text-sm text-text-muted">
@@ -441,43 +454,33 @@ export function AudioEditor() {
                 </div>
               )}
               <div ref={waveContainerRef} className="w-full" />
-
-              {/* Section color overlays + split markers */}
-              {duration > 0 && (
-                <div className="absolute top-0 pointer-events-none" style={{ height: '110px', left: 0, right: 0 }}>
-                  {sections.map(section => section.action !== 'keep' && (
-                    <div
-                      key={`s-${section.index}`}
-                      className="absolute top-0 bottom-0 transition-colors"
-                      style={{
-                        left: `${(section.start / duration) * 100}%`,
-                        width: `${((section.end - section.start) / duration) * 100}%`,
-                        backgroundColor: section.action === 'cut'
-                          ? 'rgba(239, 68, 68, 0.18)'
-                          : 'rgba(245, 158, 11, 0.18)',
-                      }}
-                    />
-                  ))}
-                  {splitPoints.map((point, i) => (
-                    <div
-                      key={`m-${i}`}
-                      className="absolute top-0 bottom-0 w-0.5"
-                      style={{
-                        left: `${(point / duration) * 100}%`,
-                        background: 'rgba(255,255,255,0.6)',
-                      }}
-                    >
-                      <div
-                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-white/80 bg-bg-primary"
-                        style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                        title={`Split @ ${formatTime(point)} — click to remove`}
-                        onClick={() => removeSplit(i)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
+
+            {/* Zoom slider */}
+            {duration > 0 && (
+              <div className="flex items-center gap-2 mt-1.5">
+                <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><path d="M8 11h6" />
+                </svg>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  step="1"
+                  value={zoomLevel}
+                  onChange={e => {
+                    const v = Number(e.target.value);
+                    setZoomLevel(v);
+                    wsRef.current?.zoom(v);
+                  }}
+                  className="flex-1 h-1 accent-accent"
+                />
+                <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><path d="M8 11h6M11 8v6" />
+                </svg>
+                <span className="text-[10px] text-text-muted font-mono min-w-[32px] text-right">{zoomLevel}px</span>
+              </div>
+            )}
           </div>
 
           {/* Section overview bar */}
