@@ -61,5 +61,8 @@ if FRONTEND_DIR.exists():
         file_path = FRONTEND_DIR / full_path
         if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        # Otherwise serve index.html (SPA routing)
-        return FileResponse(FRONTEND_DIR / "index.html")
+        # Otherwise serve index.html (SPA routing) — no-cache so browser always gets latest
+        return FileResponse(
+            FRONTEND_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
