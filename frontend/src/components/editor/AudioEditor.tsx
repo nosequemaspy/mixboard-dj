@@ -2,53 +2,123 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
-import type { Region } from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
 import type { Song, EditedSong } from '../../types';
 
-type RegionAction = 'cut' | 'mute';
-
-interface TrackedRegion {
+interface Clip {
   id: string;
-  region: Region;
-  action: RegionAction;
+  start: number;
+  end: number;
+  status: 'keep' | 'delete' | 'mute';
 }
 
-const COLORS = {
-  cut: 'rgba(239, 68, 68, 0.25)',
-  mute: 'rgba(245, 158, 11, 0.25)',
-  cutSelected: 'rgba(239, 68, 68, 0.45)',
-  muteSelected: 'rgba(245, 158, 11, 0.45)',
-};
+let _cid = 0;
+const genId = () => `c${++_cid}`;
+const SPLIT_MIN = 0.1;
 
-function formatTime(s: number): string {
+function fmt(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   const ms = Math.floor((s % 1) * 10);
   return `${m}:${sec.toString().padStart(2, '0')}.${ms}`;
 }
 
+function findClipAt(time: number, clips: Clip[]): Clip | null {
+  return clips.find((c, i) =>
+    time >= c.start && (i === clips.length - 1 ? time <= c.end : time < c.end)
+  ) ?? null;
+}
+
+// --- Toolbar Button ---
+
+function TBtn({ icon, label, shortcut, onClick, disabled, active, activeClass }: {
+  icon: React.ReactNode;
+  label: string;
+  shortcut?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  activeClass?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={shortcut ? `${label} (${shortcut})` : label}
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium transition-all
+        ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-bg-hover'}
+        ${active && activeClass ? activeClass : active ? 'bg-accent/20 text-accent' : 'text-text-secondary hover:text-text-primary'}
+      `}
+    >
+      {icon}
+      {label}
+      {shortcut && <kbd className="text-[9px] text-text-muted/40 font-mono ml-0.5 hidden sm:inline">{shortcut}</kbd>}
+    </button>
+  );
+}
+
+// --- Icons ---
+
+const IconScissors = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+    <line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" />
+  </svg>
+);
+
+const IconTrash = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+  </svg>
+);
+
+const IconMicOff = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
+const IconUndo = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path d="M9 14L4 9l5-5" /><path d="M20 20v-7a4 4 0 00-4-4H4" />
+  </svg>
+);
+
+const IconReset = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path d="M1 4v6h6" /><path d="M23 20v-6h-6" />
+    <path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" />
+  </svg>
+);
+
+// --- Main Component ---
+
 export function AudioEditor() {
   const songs = useLibraryStore(s => s.songs);
   const removeSongFromStore = useLibraryStore(s => s.removeSong);
 
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
-  const [editName, setEditName] = useState('');
-  const [edits, setEdits] = useState<EditedSong[]>([]);
-  const [saving, setSaving] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [clipHistory, setClipHistory] = useState<Clip[][]>([]);
+
+  const [editName, setEditName] = useState('');
+  const [edits, setEdits] = useState<EditedSong[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [playingEditId, setPlayingEditId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
-  const [playingEditId, setPlayingEditId] = useState<number | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [regions, setRegions] = useState<TrackedRegion[]>([]);
-  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [separatingStems, setSeparatingStems] = useState(false);
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
@@ -56,15 +126,76 @@ export function AudioEditor() {
   const regionsRef = useRef<RegionsPlugin | null>(null);
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
+  const clipsRef = useRef<Clip[]>([]);
+
+  useEffect(() => { clipsRef.current = clips; }, [clips]);
 
   const stemsStatus = selectedSong?.stems_status;
   const canMuteVocals = stemsStatus === 'ready';
-  const hasRegions = regions.length > 0;
+  const selectedClip = clips.find(c => c.id === selectedClipId) ?? null;
+  const hasModifications = clips.some(c => c.status !== 'keep');
+  const deletedDuration = clips.filter(c => c.status === 'delete').reduce((s, c) => s + (c.end - c.start), 0);
+  const mutedCount = clips.filter(c => c.status === 'mute').length;
+  const deletedCount = clips.filter(c => c.status === 'delete').length;
 
-  // Initialize WaveSurfer
+  // --- Clip actions ---
+
+  const pushHistory = useCallback(() => {
+    setClipHistory(prev => [...prev.slice(-50), clipsRef.current]);
+  }, []);
+
+  const splitAtPlayhead = useCallback(() => {
+    const time = wsRef.current?.getCurrentTime() ?? 0;
+    if (time < SPLIT_MIN || time > duration - SPLIT_MIN) return;
+
+    const current = clipsRef.current;
+    const tooClose = current.some(c =>
+      Math.abs(c.start - time) < SPLIT_MIN || Math.abs(c.end - time) < SPLIT_MIN
+    );
+    if (tooClose) return;
+
+    const idx = current.findIndex(c => time > c.start + SPLIT_MIN && time < c.end - SPLIT_MIN);
+    if (idx === -1) return;
+
+    pushHistory();
+    const clip = current[idx];
+    const left = { id: genId(), start: clip.start, end: time, status: clip.status };
+    const right = { id: genId(), start: time, end: clip.end, status: clip.status };
+    const newClips = [...current];
+    newClips.splice(idx, 1, left, right);
+    setClips(newClips);
+    setSelectedClipId(right.id);
+  }, [duration, pushHistory]);
+
+  const toggleClipStatus = useCallback((status: 'delete' | 'mute') => {
+    if (!selectedClipId) return;
+    if (status === 'mute' && !canMuteVocals) return;
+    pushHistory();
+    setClips(prev => prev.map(c => {
+      if (c.id !== selectedClipId) return c;
+      return { ...c, status: c.status === status ? 'keep' : status };
+    }));
+  }, [selectedClipId, canMuteVocals, pushHistory]);
+
+  const undo = useCallback(() => {
+    if (clipHistory.length === 0) return;
+    const prev = clipHistory[clipHistory.length - 1];
+    setClipHistory(h => h.slice(0, -1));
+    setClips(prev);
+    setSelectedClipId(null);
+  }, [clipHistory]);
+
+  const resetClips = useCallback(() => {
+    if (duration === 0) return;
+    pushHistory();
+    setClips([{ id: genId(), start: 0, end: duration, status: 'keep' }]);
+    setSelectedClipId(null);
+  }, [duration, pushHistory]);
+
+  // --- WaveSurfer ---
+
   useEffect(() => {
     if (!waveContainerRef.current) return;
-
     const regionsPlugin = RegionsPlugin.create();
 
     const ws = WaveSurfer.create({
@@ -101,11 +232,6 @@ export function AudioEditor() {
       setDuration(ws.getDuration());
       setIsLoading(false);
       setLoadError(null);
-      regionsPlugin.enableDragSelection({
-        color: COLORS.cut,
-        drag: true,
-        resize: true,
-      }, 5);
     });
     ws.on('error', (err: any) => {
       console.error('WaveSurfer error:', err);
@@ -113,47 +239,48 @@ export function AudioEditor() {
       setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
     });
 
-    regionsPlugin.on('region-created', (region: Region) => {
-      setRegions(prev => [...prev, { id: region.id, region, action: 'cut' }]);
-      setSelectedRegionId(region.id);
+    ws.on('seeking', (t: number) => {
+      const clip = findClipAt(t, clipsRef.current);
+      if (clip) setSelectedClipId(clip.id);
     });
-    regionsPlugin.on('region-updated', (region: Region) => {
-      setRegions(prev => prev.map(r => r.id === region.id ? { ...r, region } : r));
-    });
-    regionsPlugin.on('region-clicked', (region: Region, e: MouseEvent) => {
-      e.stopPropagation();
-      setSelectedRegionId(region.id);
-    });
-    ws.on('click', () => setSelectedRegionId(null));
 
     wsRef.current = ws;
     regionsRef.current = regionsPlugin;
-
-    return () => {
-      ws.destroy();
-      wsRef.current = null;
-      regionsRef.current = null;
-    };
+    return () => { ws.destroy(); wsRef.current = null; regionsRef.current = null; };
   }, []);
 
-  // Keyboard shortcuts
+  // --- Keyboard ---
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
       if (e.code === 'Space') {
         e.preventDefault();
         wsRef.current?.playPause();
-      } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedRegionId) {
+      } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        removeRegion(selectedRegionId);
+        splitAtPlayhead();
+      } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedClipId) {
+        e.preventDefault();
+        toggleClipStatus('delete');
+      } else if (e.code === 'KeyM' && !e.ctrlKey && selectedClipId) {
+        e.preventDefault();
+        toggleClipStatus('mute');
+      } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undo();
+      } else if (e.code === 'Escape') {
+        setSelectedClipId(null);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedRegionId]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [splitAtPlayhead, toggleClipStatus, undo, selectedClipId]);
 
-  // Load song — fetch as blob then pass to WaveSurfer
+  // --- Load song ---
+
   useEffect(() => {
     if (!wsRef.current || !selectedSong || selectedSong.id === loadedSongId.current) return;
     loadedSongId.current = selectedSong.id;
@@ -162,9 +289,9 @@ export function AudioEditor() {
     setCurrentTime(0);
     setDuration(0);
     setZoomLevel(1);
-    setRegions([]);
-    setSelectedRegionId(null);
-    regionsRef.current?.clearRegions();
+    setClips([]);
+    setSelectedClipId(null);
+    setClipHistory([]);
 
     if (editAudioRef.current) {
       editAudioRef.current.pause();
@@ -187,10 +314,7 @@ export function AudioEditor() {
         ws.once('ready', () => URL.revokeObjectURL(blobUrl));
         ws.once('error', () => URL.revokeObjectURL(blobUrl));
       } catch (err: any) {
-        if (!cancelled) {
-          setLoadError(`Error: ${err.message}`);
-          setIsLoading(false);
-        }
+        if (!cancelled) { setLoadError(`Error: ${err.message}`); setIsLoading(false); }
       }
     })();
 
@@ -199,18 +323,50 @@ export function AudioEditor() {
     return () => { cancelled = true; };
   }, [selectedSong]);
 
+  // --- Init clips on duration ---
+
   useEffect(() => {
-    return () => {
-      if (editAudioRef.current) {
-        editAudioRef.current.pause();
-        editAudioRef.current = null;
-      }
-    };
+    if (duration > 0 && clips.length === 0) {
+      setClips([{ id: genId(), start: 0, end: duration, status: 'keep' }]);
+    }
+  }, [duration, clips.length]);
+
+  // --- Sync overlays ---
+
+  useEffect(() => {
+    const rp = regionsRef.current;
+    if (!rp || duration === 0) return;
+
+    rp.clearRegions();
+
+    clips.forEach(clip => {
+      if (clip.status === 'keep') return;
+      const color = clip.status === 'delete'
+        ? 'rgba(239, 68, 68, 0.25)'
+        : 'rgba(245, 158, 11, 0.25)';
+      const r = rp.addRegion({ start: clip.start, end: clip.end, color, drag: false, resize: false });
+      try { (r as any).element.style.pointerEvents = 'none'; } catch {}
+    });
+
+    // Split lines
+    clips.forEach((clip, i) => {
+      if (i === 0) return;
+      const r = rp.addRegion({
+        start: clip.start, end: clip.start,
+        color: 'rgba(148, 163, 184, 0.5)',
+        drag: false, resize: false,
+      });
+      try { (r as any).element.style.pointerEvents = 'none'; } catch {}
+    });
+  }, [clips, duration]);
+
+  // --- Cleanup ---
+
+  useEffect(() => {
+    return () => { if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; } };
   }, []);
 
-  const loadEdits = async (songId: number) => {
-    try { setEdits(await api.getEdits(songId)); } catch { setEdits([]); }
-  };
+  // --- Handlers ---
 
   const handleZoom = useCallback((v: number) => {
     setZoomLevel(v);
@@ -219,131 +375,76 @@ export function AudioEditor() {
 
   const seekTo = useCallback((time: number) => {
     if (!wsRef.current || duration === 0) return;
-    wsRef.current.seekTo(time / duration);
+    wsRef.current.seekTo(Math.min(Math.max(time / duration, 0), 1));
   }, [duration]);
 
-  const setRegionAction = useCallback((regionId: string, action: RegionAction) => {
-    setRegions(prev => prev.map(r => {
-      if (r.id !== regionId) return r;
-      const isSelected = regionId === selectedRegionId;
-      r.region.setOptions({
-        color: action === 'cut'
-          ? (isSelected ? COLORS.cutSelected : COLORS.cut)
-          : (isSelected ? COLORS.muteSelected : COLORS.mute),
-      });
-      return { ...r, action };
-    }));
-  }, [selectedRegionId]);
-
-  const removeRegion = useCallback((regionId: string) => {
-    setRegions(prev => {
-      const found = prev.find(r => r.id === regionId);
-      if (found) found.region.remove();
-      return prev.filter(r => r.id !== regionId);
-    });
-    if (selectedRegionId === regionId) setSelectedRegionId(null);
-  }, [selectedRegionId]);
-
-  const clearAllRegions = useCallback(() => {
-    regionsRef.current?.clearRegions();
-    setRegions([]);
-    setSelectedRegionId(null);
-  }, []);
-
-  useEffect(() => {
-    regions.forEach(r => {
-      const isSelected = r.id === selectedRegionId;
-      const color = r.action === 'cut'
-        ? (isSelected ? COLORS.cutSelected : COLORS.cut)
-        : (isSelected ? COLORS.muteSelected : COLORS.mute);
-      r.region.setOptions({ color });
-    });
-  }, [selectedRegionId, regions]);
+  const loadEdits = async (songId: number) => {
+    try { setEdits(await api.getEdits(songId)); } catch { setEdits([]); }
+  };
 
   const handleSeparateStems = async () => {
     if (!selectedSong || separatingStems) return;
     setSeparatingStems(true);
     try {
       await api.separateStems(selectedSong.id);
-      // Poll for completion
       const poll = setInterval(async () => {
         try {
-          const res = await fetch(`${api.streamUrl(selectedSong.id).replace('/audio/stream/', '/songs/')}`)
-            .catch(() => null);
-          if (!res) return;
-          // Re-fetch songs to get updated stems_status
           await useLibraryStore.getState().fetchSongs();
           const updated = useLibraryStore.getState().songs.find(s => s.id === selectedSong.id);
           if (updated && updated.stems_status === 'ready') {
-            setSelectedSong(updated);
-            setSeparatingStems(false);
-            clearInterval(poll);
+            setSelectedSong(updated); setSeparatingStems(false); clearInterval(poll);
           } else if (updated && updated.stems_status === 'error') {
-            setSeparatingStems(false);
-            clearInterval(poll);
+            setSeparatingStems(false); clearInterval(poll);
           }
-        } catch { /* keep polling */ }
+        } catch {}
       }, 2000);
-      // Safety timeout
       setTimeout(() => { clearInterval(poll); setSeparatingStems(false); }, 60000);
-    } catch {
-      setSeparatingStems(false);
-    }
+    } catch { setSeparatingStems(false); }
   };
 
   const handleSave = async () => {
-    if (!selectedSong || !editName.trim() || !hasRegions) return;
+    if (!selectedSong || !editName.trim() || !hasModifications) return;
+    const delClips = clips.filter(c => c.status === 'delete');
+    const muteClips = clips.filter(c => c.status === 'mute');
     setSaving(true);
     try {
-      const cutRegions = regions.filter(r => r.action === 'cut');
-      const muteRegions = regions.filter(r => r.action === 'mute');
-
-      if (cutRegions.length > 0) {
+      if (delClips.length > 0) {
         await api.createEdit({
           song_id: selectedSong.id,
-          name: editName.trim() + (muteRegions.length > 0 ? ' (corte)' : ''),
+          name: editName.trim() + (muteClips.length > 0 ? ' (corte)' : ''),
           edit_type: 'cut_section',
-          params: { sections: cutRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
+          params: { sections: delClips.map(c => ({ start: c.start, end: c.end })) },
         });
       }
-      if (muteRegions.length > 0) {
+      if (muteClips.length > 0) {
         await api.createEdit({
           song_id: selectedSong.id,
-          name: editName.trim() + (cutRegions.length > 0 ? ' (vocal mute)' : ''),
+          name: editName.trim() + (delClips.length > 0 ? ' (vocal mute)' : ''),
           edit_type: 'vocal_mute_section',
-          params: { sections: muteRegions.map(r => ({ start: r.region.start, end: r.region.end })) },
+          params: { sections: muteClips.map(c => ({ start: c.start, end: c.end })) },
         });
       }
       loadEdits(selectedSong.id);
-      clearAllRegions();
+      resetClips();
     } catch (e: any) {
       alert(e.message || 'Error al guardar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteEdit = async (editId: number) => {
-    if (playingEditId === editId) {
-      editAudioRef.current?.pause();
-      editAudioRef.current = null;
-      setPlayingEditId(null);
-    }
-    await api.deleteEdit(editId);
-    if (selectedSong) loadEdits(selectedSong.id);
+    } finally { setSaving(false); }
   };
 
   const handlePlayEdit = (editId: number) => {
-    if (editAudioRef.current) {
-      editAudioRef.current.pause();
-      editAudioRef.current = null;
-    }
+    if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
     if (playingEditId === editId) { setPlayingEditId(null); return; }
     const audio = new Audio(api.editStreamUrl(editId));
     audio.play();
     audio.onended = () => { setPlayingEditId(null); editAudioRef.current = null; };
     editAudioRef.current = audio;
     setPlayingEditId(editId);
+  };
+
+  const handleDeleteEdit = async (editId: number) => {
+    if (playingEditId === editId) { editAudioRef.current?.pause(); editAudioRef.current = null; setPlayingEditId(null); }
+    await api.deleteEdit(editId);
+    if (selectedSong) loadEdits(selectedSong.id);
   };
 
   const handleDeleteSong = async (songId: number) => {
@@ -354,26 +455,23 @@ export function AudioEditor() {
         wsRef.current?.pause();
         setSelectedSong(null);
         loadedSongId.current = null;
-        setRegions([]);
-        setSelectedRegionId(null);
-        setEdits([]);
+        setClips([]); setSelectedClipId(null); setClipHistory([]); setEdits([]);
       }
       setDeleteConfirm(null);
-    } catch (e: any) {
-      alert(e.message || 'Error al eliminar');
-    }
+    } catch (e: any) { alert(e.message || 'Error al eliminar'); }
   };
 
   const filteredSongs = searchQuery
     ? songs.filter(s =>
         s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.artist.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+        s.artist.toLowerCase().includes(searchQuery.toLowerCase()))
     : songs;
+
+  // =================== JSX ===================
 
   return (
     <div className="flex h-full bg-bg-secondary">
-      {/* Song sidebar */}
+      {/* ===== SIDEBAR ===== */}
       <div className="w-48 border-r border-border flex flex-col flex-shrink-0">
         <div className="px-2 py-2 border-b border-border">
           <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Canciones</span>
@@ -406,17 +504,12 @@ export function AudioEditor() {
                 <div className="text-[11px] text-text-primary truncate font-medium">{song.title}</div>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="text-[10px] text-text-muted truncate">{song.artist}</span>
-                  <span className="text-[10px] text-text-muted/60 font-mono ml-auto">{formatTime(song.duration_seconds)}</span>
+                  <span className="text-[10px] text-text-muted/60 font-mono ml-auto">{fmt(song.duration_seconds)}</span>
                 </div>
               </button>
-              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => setDeleteConfirm(song.id)}
-                  className="text-text-muted hover:text-danger p-0.5"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => setDeleteConfirm(song.id)} className="text-text-muted hover:text-danger p-0.5">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
               {deleteConfirm === song.id && (
@@ -433,12 +526,12 @@ export function AudioEditor() {
         </div>
       </div>
 
-      {/* Main editor */}
+      {/* ===== MAIN EDITOR ===== */}
       {selectedSong ? (
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Top bar: song info + transport + zoom */}
+
+          {/* --- Transport Bar --- */}
           <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-bg-primary/50">
-            {/* Play button */}
             <button
               onClick={() => wsRef.current?.playPause()}
               disabled={isLoading || duration === 0}
@@ -451,23 +544,16 @@ export function AudioEditor() {
               )}
             </button>
 
-            {/* Time */}
-            <span className="text-xs font-mono text-accent tabular-nums">
-              {formatTime(currentTime)}
-            </span>
+            <span className="text-xs font-mono text-accent tabular-nums">{fmt(currentTime)}</span>
             <span className="text-xs text-text-muted">/</span>
-            <span className="text-xs font-mono text-text-muted tabular-nums">
-              {formatTime(duration)}
-            </span>
+            <span className="text-xs font-mono text-text-muted tabular-nums">{fmt(duration)}</span>
 
             <div className="w-px h-5 bg-border/50" />
 
-            {/* Song title */}
             <div className="flex-1 min-w-0">
               <span className="text-xs text-text-primary font-medium truncate block">{selectedSong.title}</span>
             </div>
 
-            {/* Stems status + separate button */}
             {canMuteVocals ? (
               <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold">STEMS</span>
             ) : (
@@ -486,16 +572,12 @@ export function AudioEditor() {
 
             <div className="w-px h-5 bg-border/50" />
 
-            {/* Zoom */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <svg className="w-3 h-3 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
               </svg>
               <input
-                type="range"
-                min="1"
-                max="200"
-                step="1"
+                type="range" min="1" max="200" step="1"
                 value={zoomLevel}
                 onChange={e => handleZoom(Number(e.target.value))}
                 className="w-24 h-1 accent-accent"
@@ -505,15 +587,81 @@ export function AudioEditor() {
             </div>
           </div>
 
-          {/* Waveform — fills all available space */}
+          {/* --- Toolbar --- */}
+          <div className="flex items-center gap-0.5 px-3 py-1 border-b border-border/40 bg-bg-primary/30">
+            <TBtn
+              icon={<IconScissors />}
+              label="Dividir"
+              shortcut="S"
+              onClick={splitAtPlayhead}
+              disabled={!duration || clips.length === 0}
+            />
+
+            <div className="w-px h-4 bg-border/30 mx-1" />
+
+            <TBtn
+              icon={<IconTrash />}
+              label="Eliminar"
+              shortcut="Supr"
+              onClick={() => toggleClipStatus('delete')}
+              disabled={!selectedClipId}
+              active={selectedClip?.status === 'delete'}
+              activeClass="bg-danger/20 text-danger"
+            />
+            <TBtn
+              icon={<IconMicOff />}
+              label="Mute Vocal"
+              shortcut="M"
+              onClick={() => toggleClipStatus('mute')}
+              disabled={!selectedClipId || !canMuteVocals}
+              active={selectedClip?.status === 'mute'}
+              activeClass="bg-warning/20 text-warning"
+            />
+
+            <div className="w-px h-4 bg-border/30 mx-1" />
+
+            <TBtn
+              icon={<IconUndo />}
+              label="Deshacer"
+              shortcut="Ctrl+Z"
+              onClick={undo}
+              disabled={clipHistory.length === 0}
+            />
+            <TBtn
+              icon={<IconReset />}
+              label="Limpiar"
+              onClick={resetClips}
+              disabled={clips.length <= 1 && !hasModifications}
+            />
+
+            {/* Status summary */}
+            {hasModifications && (
+              <div className="ml-auto flex items-center gap-2 text-[10px]">
+                {deletedCount > 0 && (
+                  <span className="text-danger font-mono">
+                    {deletedCount} corte{deletedCount > 1 ? 's' : ''} ({fmt(deletedDuration)})
+                  </span>
+                )}
+                {mutedCount > 0 && (
+                  <span className="text-warning font-mono">
+                    {mutedCount} mute{mutedCount > 1 ? 's' : ''}
+                  </span>
+                )}
+                <span className="text-text-muted font-mono">
+                  = {fmt(duration - deletedDuration)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* --- Waveform --- */}
           <div
             className="flex-1 relative bg-bg-primary"
             style={{ overflowX: 'auto', overflowY: 'hidden' }}
             onWheel={e => {
               if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
-                const delta = e.deltaY > 0 ? -10 : 10;
-                handleZoom(Math.max(1, Math.min(200, zoomLevel + delta)));
+                handleZoom(Math.max(1, Math.min(200, zoomLevel + (e.deltaY > 0 ? -10 : 10))));
               }
             }}
           >
@@ -530,10 +678,7 @@ export function AudioEditor() {
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/95 gap-2">
                 <span className="text-sm text-danger">{loadError}</span>
                 <button
-                  onClick={() => {
-                    loadedSongId.current = null;
-                    setSelectedSong({ ...selectedSong });
-                  }}
+                  onClick={() => { loadedSongId.current = null; setSelectedSong({ ...selectedSong }); }}
                   className="text-xs text-accent hover:underline"
                 >
                   Reintentar
@@ -543,72 +688,76 @@ export function AudioEditor() {
             <div ref={waveContainerRef} className="w-full h-full" />
           </div>
 
-          {/* Bottom panel: regions + save + edits */}
-          {(hasRegions || edits.length > 0) && (
-            <div className="border-t border-border bg-bg-secondary max-h-[35%] overflow-y-auto">
-              {/* Regions */}
-              {hasRegions && (
-                <div className="px-4 pt-2 pb-1">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
-                      Selecciones ({regions.length})
-                    </span>
-                    <div className="flex-1" />
-                    <button onClick={clearAllRegions} className="text-[10px] text-text-muted hover:text-danger">
-                      Limpiar
-                    </button>
+          {/* --- Clip Track --- */}
+          {duration > 0 && clips.length > 0 && (
+            <div className="h-10 border-t border-border bg-bg-primary/60 relative flex flex-shrink-0 overflow-hidden">
+              {clips.map(clip => {
+                const pct = ((clip.end - clip.start) / duration) * 100;
+                const isSelected = clip.id === selectedClipId;
+                const isNarrow = pct < 6;
+                const isMedium = pct >= 6 && pct < 14;
+
+                let borderColor = 'border-l-accent/30';
+                let bg = 'bg-accent/5';
+                let textColor = 'text-text-muted/50';
+
+                if (clip.status === 'delete') {
+                  borderColor = 'border-l-danger/60';
+                  bg = 'bg-danger/10';
+                  textColor = 'text-danger/70';
+                } else if (clip.status === 'mute') {
+                  borderColor = 'border-l-warning/60';
+                  bg = 'bg-warning/10';
+                  textColor = 'text-warning/70';
+                }
+
+                return (
+                  <div
+                    key={clip.id}
+                    onClick={() => { setSelectedClipId(clip.id); seekTo(clip.start + 0.01); }}
+                    style={{ width: `${pct}%`, minWidth: '4px' }}
+                    className={`h-full border-l-2 border-r border-r-border/15 flex items-center cursor-pointer transition-all overflow-hidden select-none
+                      ${borderColor} ${bg} ${textColor}
+                      ${isSelected
+                        ? 'ring-1 ring-inset ring-accent/70 brightness-150'
+                        : 'hover:brightness-125'
+                      }
+                    `}
+                  >
+                    {!isNarrow && (
+                      <span className="text-[9px] font-mono truncate px-1.5 leading-tight">
+                        {clip.status === 'delete' && <span className="mr-0.5">&#10005;</span>}
+                        {clip.status === 'mute' && <span className="mr-0.5">&#9834;</span>}
+                        {isMedium
+                          ? fmt(clip.start)
+                          : `${fmt(clip.start)} \u2013 ${fmt(clip.end)}`
+                        }
+                        {!isMedium && clip.status !== 'keep' && (
+                          <span className="opacity-50 ml-1">
+                            {clip.status === 'delete' ? 'eliminar' : 'mute'}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    {regions.map(({ id, region, action }) => (
-                      <div
-                        key={id}
-                        onClick={() => { setSelectedRegionId(id); seekTo(region.start); }}
-                        className={`flex items-center gap-1.5 border rounded px-2 py-1 cursor-pointer transition-colors text-[10px] ${
-                          selectedRegionId === id
-                            ? action === 'cut' ? 'border-danger/60 bg-danger/5' : 'border-warning/60 bg-warning/5'
-                            : 'border-border/40 hover:border-border bg-bg-primary'
-                        }`}
-                      >
-                        <span className="font-mono text-accent">{formatTime(region.start)}</span>
-                        <span className="text-text-muted">{'\u2192'}</span>
-                        <span className="font-mono text-text-secondary">{formatTime(region.end)}</span>
-                        <span className="text-text-muted/50 font-mono">({formatTime(region.end - region.start)})</span>
+                );
+              })}
+              {/* Playhead on clip track */}
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-white/70 pointer-events-none z-10"
+                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+              />
+            </div>
+          )}
 
-                        <div className="flex gap-0.5 ml-1">
-                          <button
-                            onClick={e => { e.stopPropagation(); setRegionAction(id, 'cut'); }}
-                            className={`px-1.5 py-0.5 rounded font-bold ${
-                              action === 'cut' ? 'bg-danger/20 text-danger' : 'text-text-muted hover:text-danger'
-                            }`}
-                          >
-                            Cortar
-                          </button>
-                          <button
-                            onClick={e => { e.stopPropagation(); setRegionAction(id, 'mute'); }}
-                            disabled={!canMuteVocals}
-                            className={`px-1.5 py-0.5 rounded font-bold ${
-                              action === 'mute' ? 'bg-warning/20 text-warning' : 'text-text-muted hover:text-warning disabled:opacity-30'
-                            }`}
-                            title={canMuteVocals ? 'Reducir vocales' : 'Separa stems primero'}
-                          >
-                            Mute Vocal
-                          </button>
-                        </div>
+          {/* --- Save / Edits Panel --- */}
+          {(hasModifications || edits.length > 0) && (
+            <div className="border-t border-border bg-bg-secondary max-h-[30%] overflow-y-auto">
 
-                        <button
-                          onClick={e => { e.stopPropagation(); removeRegion(id); }}
-                          className="text-text-muted hover:text-danger ml-0.5"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Save */}
-                  <div className="flex items-center gap-2 mt-2">
+              {/* Save controls */}
+              {hasModifications && (
+                <div className="px-4 py-2">
+                  <div className="flex items-center gap-2">
                     <input
                       value={editName}
                       onChange={e => setEditName(e.target.value)}
@@ -619,7 +768,7 @@ export function AudioEditor() {
                       {saving ? 'Guardando...' : 'Guardar'}
                     </Button>
                   </div>
-                  {!canMuteVocals && regions.some(r => r.action === 'mute') && (
+                  {!canMuteVocals && mutedCount > 0 && (
                     <p className="text-[10px] text-warning mt-1 flex items-center gap-1">
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -632,7 +781,7 @@ export function AudioEditor() {
 
               {/* Saved edits */}
               {edits.length > 0 && (
-                <div className="px-4 py-2 border-t border-border/30">
+                <div className={`px-4 py-2 ${hasModifications ? 'border-t border-border/30' : ''}`}>
                   <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
                     Edits guardados ({edits.length})
                   </span>
@@ -645,7 +794,7 @@ export function AudioEditor() {
                         }`}>
                           {edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
                         </span>
-                        <span className="text-[10px] text-text-muted font-mono">{formatTime(edit.duration_seconds)}</span>
+                        <span className="text-[10px] text-text-muted font-mono">{fmt(edit.duration_seconds)}</span>
                         <button
                           onClick={() => handlePlayEdit(edit.id)}
                           className={`w-5 h-5 rounded-full flex items-center justify-center ${
@@ -683,13 +832,22 @@ export function AudioEditor() {
             </div>
           )}
 
-          {/* Instruction when no regions and waveform loaded */}
-          {!hasRegions && !isLoading && !loadError && duration > 0 && edits.length === 0 && (
+          {/* --- Instructions --- */}
+          {!hasModifications && !isLoading && !loadError && duration > 0 && edits.length === 0 && clips.length === 1 && (
             <div className="border-t border-border bg-bg-secondary px-4 py-2 text-center">
               <span className="text-[11px] text-text-muted">
-                Arrastra sobre la forma de onda para seleccionar una zona
+                Reproduce el audio, pausa donde quieras cortar y presiona{' '}
+                <kbd className="bg-bg-tertiary px-1.5 py-0.5 rounded text-text-secondary font-mono text-[10px]">S</kbd>
+                {' '}para dividir
                 {' '}&middot;{' '}Ctrl + scroll para zoom
-                {!canMuteVocals && <>{' '}&middot;{' '}<button onClick={handleSeparateStems} disabled={separatingStems} className="text-accent hover:underline">{separatingStems ? 'Separando...' : 'Separar stems para mute vocal'}</button></>}
+                {!canMuteVocals && (
+                  <>
+                    {' '}&middot;{' '}
+                    <button onClick={handleSeparateStems} disabled={separatingStems} className="text-accent hover:underline">
+                      {separatingStems ? 'Separando...' : 'Separar stems para mute vocal'}
+                    </button>
+                  </>
+                )}
               </span>
             </div>
           )}
