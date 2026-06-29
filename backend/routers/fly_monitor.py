@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from config import (
     SONGS_DIR, STEMS_DIR, EDITS_DIR, DB_DIR,
-    STORAGE_LIMIT_GB, STORAGE_LIMIT_BYTES, YTDLP_AUDIO_QUALITY,
+    STORAGE_LIMIT_GB, STORAGE_LIMIT_BYTES, AUDIO_QUALITY,
 )
 
 router = APIRouter(prefix="/api/fly", tags=["fly-monitor"])
@@ -49,7 +49,7 @@ def get_fly_status():
     usage_percent = round((total_storage / STORAGE_LIMIT_BYTES) * 100, 1) if STORAGE_LIMIT_BYTES > 0 else 0
 
     # Calculate estimated song capacity
-    avg_mb = _AVG_MB_PER_SONG.get(YTDLP_AUDIO_QUALITY, 5.0)
+    avg_mb = _AVG_MB_PER_SONG.get(AUDIO_QUALITY, 5.0)
     non_song_bytes = stems_bytes + edits_bytes + db_bytes
     available_for_songs = max(0, STORAGE_LIMIT_BYTES - non_song_bytes)
     estimated_capacity = int(available_for_songs / (avg_mb * 1024 * 1024))
@@ -94,7 +94,7 @@ def get_fly_status():
             },
         },
         "capacity": {
-            "audio_quality_kbps": int(YTDLP_AUDIO_QUALITY),
+            "audio_quality_kbps": int(AUDIO_QUALITY),
             "avg_song_mb": avg_mb,
             "songs_current": songs_count,
             "songs_estimated_max": estimated_capacity,

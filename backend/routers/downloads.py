@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -13,7 +11,7 @@ router = APIRouter(prefix="/api/downloads", tags=["downloads"])
 @router.post("/preview", response_model=DownloadPreview)
 async def preview_download(data: DownloadRequest):
     try:
-        info = await asyncio.to_thread(get_video_info, data.url)
+        info = await get_video_info(data.url)
         return DownloadPreview(**info)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
