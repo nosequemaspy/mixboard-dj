@@ -36,17 +36,8 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
           }
         }
         engine.setVocalMute(deckId, true);
-      } else if (!isProcessing && !hasError) {
-        // Trigger separation in background — websocket will hot-load when done
-        updateSongInDeck(deckId, { stems_status: 'processing' });
-        try {
-          await api.separateStems(deck.song.id);
-        } catch {
-          updateSongInDeck(deckId, { stems_status: 'none' });
-          setVocalMuted(deckId, false);
-        }
-      } else if (hasError) {
-        // Previous attempt failed — retry
+      } else {
+        // Not ready — trigger (or re-trigger) separation
         updateSongInDeck(deckId, { stems_status: 'processing' });
         try {
           await api.separateStems(deck.song.id);

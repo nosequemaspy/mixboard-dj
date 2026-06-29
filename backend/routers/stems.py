@@ -21,8 +21,11 @@ async def start_separation(data: StemSeparationRequest, db: Session = Depends(ge
     song = db.query(Song).filter(Song.id == data.song_id).first()
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
+
+    # Reset stuck "processing" status (ffmpeg takes seconds, not minutes)
     if song.stems_status == "processing":
-        raise HTTPException(status_code=400, detail="Already processing")
+        song.stems_status = "none"
+        db.commit()
 
     task_id = await separate_stems(db, data.song_id)
     return {"task_id": task_id, "status": "started"}
