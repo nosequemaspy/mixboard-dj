@@ -527,10 +527,10 @@ export function AudioEditor() {
       </div>
 
       {/* ===== MAIN EDITOR ===== */}
-      {selectedSong ? (
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0">
 
-          {/* --- Transport Bar --- */}
+        {/* --- Transport Bar --- */}
+        {selectedSong && (
           <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-bg-primary/50">
             <button
               onClick={() => wsRef.current?.playPause()}
@@ -586,8 +586,10 @@ export function AudioEditor() {
               <span className="text-[9px] text-text-muted font-mono w-6 text-right">{zoomLevel}x</span>
             </div>
           </div>
+        )}
 
-          {/* --- Toolbar --- */}
+        {/* --- Toolbar --- */}
+        {selectedSong && (
           <div className="flex items-center gap-0.5 px-3 py-1 border-b border-border/40 bg-bg-primary/30">
             <TBtn
               icon={<IconScissors />}
@@ -653,213 +655,215 @@ export function AudioEditor() {
               </div>
             )}
           </div>
+        )}
 
-          {/* --- Waveform --- */}
-          <div
-            className="flex-1 relative bg-bg-primary"
-            style={{ overflowX: 'auto', overflowY: 'hidden' }}
-            onWheel={e => {
-              if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                handleZoom(Math.max(1, Math.min(200, zoomLevel + (e.deltaY > 0 ? -10 : 10))));
-              }
-            }}
-          >
-            {isLoading && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/90 gap-3">
-                <svg className="animate-spin w-8 h-8 text-accent" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                </svg>
-                <span className="text-sm text-text-muted">Cargando audio...</span>
-              </div>
-            )}
-            {loadError && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/95 gap-2">
-                <span className="text-sm text-danger">{loadError}</span>
-                <button
-                  onClick={() => { loadedSongId.current = null; setSelectedSong({ ...selectedSong }); }}
-                  className="text-xs text-accent hover:underline"
-                >
-                  Reintentar
-                </button>
-              </div>
-            )}
-            <div ref={waveContainerRef} className="w-full h-full" />
-          </div>
-
-          {/* --- Clip Track --- */}
-          {duration > 0 && clips.length > 0 && (
-            <div className="h-10 border-t border-border bg-bg-primary/60 relative flex flex-shrink-0 overflow-hidden">
-              {clips.map(clip => {
-                const pct = ((clip.end - clip.start) / duration) * 100;
-                const isSelected = clip.id === selectedClipId;
-                const isNarrow = pct < 6;
-                const isMedium = pct >= 6 && pct < 14;
-
-                let borderColor = 'border-l-accent/30';
-                let bg = 'bg-accent/5';
-                let textColor = 'text-text-muted/50';
-
-                if (clip.status === 'delete') {
-                  borderColor = 'border-l-danger/60';
-                  bg = 'bg-danger/10';
-                  textColor = 'text-danger/70';
-                } else if (clip.status === 'mute') {
-                  borderColor = 'border-l-warning/60';
-                  bg = 'bg-warning/10';
-                  textColor = 'text-warning/70';
-                }
-
-                return (
-                  <div
-                    key={clip.id}
-                    onClick={() => { setSelectedClipId(clip.id); seekTo(clip.start + 0.01); }}
-                    style={{ width: `${pct}%`, minWidth: '4px' }}
-                    className={`h-full border-l-2 border-r border-r-border/15 flex items-center cursor-pointer transition-all overflow-hidden select-none
-                      ${borderColor} ${bg} ${textColor}
-                      ${isSelected
-                        ? 'ring-1 ring-inset ring-accent/70 brightness-150'
-                        : 'hover:brightness-125'
-                      }
-                    `}
-                  >
-                    {!isNarrow && (
-                      <span className="text-[9px] font-mono truncate px-1.5 leading-tight">
-                        {clip.status === 'delete' && <span className="mr-0.5">&#10005;</span>}
-                        {clip.status === 'mute' && <span className="mr-0.5">&#9834;</span>}
-                        {isMedium
-                          ? fmt(clip.start)
-                          : `${fmt(clip.start)} \u2013 ${fmt(clip.end)}`
-                        }
-                        {!isMedium && clip.status !== 'keep' && (
-                          <span className="opacity-50 ml-1">
-                            {clip.status === 'delete' ? 'eliminar' : 'mute'}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-              {/* Playhead on clip track */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-white/70 pointer-events-none z-10"
-                style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-              />
+        {/* --- Waveform (ALWAYS rendered so WaveSurfer initializes on mount) --- */}
+        <div
+          className="flex-1 relative bg-bg-primary"
+          style={{ overflowX: 'auto', overflowY: 'hidden' }}
+          onWheel={e => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault();
+              handleZoom(Math.max(1, Math.min(200, zoomLevel + (e.deltaY > 0 ? -10 : 10))));
+            }
+          }}
+        >
+          {/* No song placeholder */}
+          {!selectedSong && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-text-muted gap-3">
+              <svg className="w-12 h-12 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+              <p className="text-sm">Selecciona una cancion para editar</p>
             </div>
           )}
+          {selectedSong && isLoading && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/90 gap-3">
+              <svg className="animate-spin w-8 h-8 text-accent" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <span className="text-sm text-text-muted">Cargando audio...</span>
+            </div>
+          )}
+          {selectedSong && loadError && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/95 gap-2">
+              <span className="text-sm text-danger">{loadError}</span>
+              <button
+                onClick={() => { loadedSongId.current = null; setSelectedSong({ ...selectedSong }); }}
+                className="text-xs text-accent hover:underline"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
+          <div ref={waveContainerRef} className="w-full h-full" />
+        </div>
 
-          {/* --- Save / Edits Panel --- */}
-          {(hasModifications || edits.length > 0) && (
-            <div className="border-t border-border bg-bg-secondary max-h-[30%] overflow-y-auto">
+        {/* --- Clip Track --- */}
+        {selectedSong && duration > 0 && clips.length > 0 && (
+          <div className="h-10 border-t border-border bg-bg-primary/60 relative flex flex-shrink-0 overflow-hidden">
+            {clips.map(clip => {
+              const pct = ((clip.end - clip.start) / duration) * 100;
+              const isSelected = clip.id === selectedClipId;
+              const isNarrow = pct < 6;
+              const isMedium = pct >= 6 && pct < 14;
 
-              {/* Save controls */}
-              {hasModifications && (
-                <div className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      placeholder="Nombre del edit"
-                      className="flex-1 bg-bg-primary border border-border/60 rounded px-2 py-1 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
-                    />
-                    <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !editName.trim()}>
-                      {saving ? 'Guardando...' : 'Guardar'}
-                    </Button>
-                  </div>
-                  {!canMuteVocals && mutedCount > 0 && (
-                    <p className="text-[10px] text-warning mt-1 flex items-center gap-1">
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
-                      Primero separa los stems para usar Mute Vocal
-                    </p>
+              let borderColor = 'border-l-accent/30';
+              let bg = 'bg-accent/5';
+              let textColor = 'text-text-muted/50';
+
+              if (clip.status === 'delete') {
+                borderColor = 'border-l-danger/60';
+                bg = 'bg-danger/10';
+                textColor = 'text-danger/70';
+              } else if (clip.status === 'mute') {
+                borderColor = 'border-l-warning/60';
+                bg = 'bg-warning/10';
+                textColor = 'text-warning/70';
+              }
+
+              return (
+                <div
+                  key={clip.id}
+                  onClick={() => { setSelectedClipId(clip.id); seekTo(clip.start + 0.01); }}
+                  style={{ width: `${pct}%`, minWidth: '4px' }}
+                  className={`h-full border-l-2 border-r border-r-border/15 flex items-center cursor-pointer transition-all overflow-hidden select-none
+                    ${borderColor} ${bg} ${textColor}
+                    ${isSelected
+                      ? 'ring-1 ring-inset ring-accent/70 brightness-150'
+                      : 'hover:brightness-125'
+                    }
+                  `}
+                >
+                  {!isNarrow && (
+                    <span className="text-[9px] font-mono truncate px-1.5 leading-tight">
+                      {clip.status === 'delete' && <span className="mr-0.5">&#10005;</span>}
+                      {clip.status === 'mute' && <span className="mr-0.5">&#9834;</span>}
+                      {isMedium
+                        ? fmt(clip.start)
+                        : `${fmt(clip.start)} \u2013 ${fmt(clip.end)}`
+                      }
+                      {!isMedium && clip.status !== 'keep' && (
+                        <span className="opacity-50 ml-1">
+                          {clip.status === 'delete' ? 'eliminar' : 'mute'}
+                        </span>
+                      )}
+                    </span>
                   )}
                 </div>
-              )}
+              );
+            })}
+            {/* Playhead on clip track */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-white/70 pointer-events-none z-10"
+              style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+            />
+          </div>
+        )}
 
-              {/* Saved edits */}
-              {edits.length > 0 && (
-                <div className={`px-4 py-2 ${hasModifications ? 'border-t border-border/30' : ''}`}>
-                  <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
-                    Edits guardados ({edits.length})
-                  </span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {edits.map(edit => (
-                      <div key={edit.id} className="flex items-center gap-1.5 bg-bg-primary border border-border/40 rounded px-2 py-1 group">
-                        <span className="text-[11px] text-text-primary font-medium truncate max-w-[150px]">{edit.name}</span>
-                        <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${
-                          edit.edit_type === 'cut_section' ? 'bg-danger/15 text-danger' : 'bg-warning/15 text-warning'
-                        }`}>
-                          {edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
-                        </span>
-                        <span className="text-[10px] text-text-muted font-mono">{fmt(edit.duration_seconds)}</span>
-                        <button
-                          onClick={() => handlePlayEdit(edit.id)}
-                          className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                            playingEditId === edit.id ? 'bg-accent text-white' : 'text-accent hover:bg-accent/20'
-                          }`}
-                        >
-                          {playingEditId === edit.id ? (
-                            <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-                          ) : (
-                            <svg className="w-2.5 h-2.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-                          )}
-                        </button>
-                        <a
-                          href={api.editStreamUrl(edit.id)}
-                          download={`${edit.name}.mp3`}
-                          className="w-5 h-5 rounded-full text-success hover:bg-success/20 flex items-center justify-center"
-                        >
-                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </a>
-                        <button
-                          onClick={() => handleDeleteEdit(edit.id)}
-                          className="w-5 h-5 rounded-full text-danger hover:bg-danger/20 flex items-center justify-center"
-                        >
-                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+        {/* --- Save / Edits Panel --- */}
+        {selectedSong && (hasModifications || edits.length > 0) && (
+          <div className="border-t border-border bg-bg-secondary max-h-[30%] overflow-y-auto">
+
+            {/* Save controls */}
+            {hasModifications && (
+              <div className="px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="Nombre del edit"
+                    className="flex-1 bg-bg-primary border border-border/60 rounded px-2 py-1 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
+                  />
+                  <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !editName.trim()}>
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </Button>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* --- Instructions --- */}
-          {!hasModifications && !isLoading && !loadError && duration > 0 && edits.length === 0 && clips.length === 1 && (
-            <div className="border-t border-border bg-bg-secondary px-4 py-2 text-center">
-              <span className="text-[11px] text-text-muted">
-                Reproduce el audio, pausa donde quieras cortar y presiona{' '}
-                <kbd className="bg-bg-tertiary px-1.5 py-0.5 rounded text-text-secondary font-mono text-[10px]">S</kbd>
-                {' '}para dividir
-                {' '}&middot;{' '}Ctrl + scroll para zoom
-                {!canMuteVocals && (
-                  <>
-                    {' '}&middot;{' '}
-                    <button onClick={handleSeparateStems} disabled={separatingStems} className="text-accent hover:underline">
-                      {separatingStems ? 'Separando...' : 'Separar stems para mute vocal'}
-                    </button>
-                  </>
+                {!canMuteVocals && mutedCount > 0 && (
+                  <p className="text-[10px] text-warning mt-1 flex items-center gap-1">
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    Primero separa los stems para usar Mute Vocal
+                  </p>
                 )}
-              </span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3">
-          <svg className="w-12 h-12 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-          </svg>
-          <p className="text-sm">Selecciona una cancion para editar</p>
-        </div>
-      )}
+              </div>
+            )}
+
+            {/* Saved edits */}
+            {edits.length > 0 && (
+              <div className={`px-4 py-2 ${hasModifications ? 'border-t border-border/30' : ''}`}>
+                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
+                  Edits guardados ({edits.length})
+                </span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {edits.map(edit => (
+                    <div key={edit.id} className="flex items-center gap-1.5 bg-bg-primary border border-border/40 rounded px-2 py-1 group">
+                      <span className="text-[11px] text-text-primary font-medium truncate max-w-[150px]">{edit.name}</span>
+                      <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${
+                        edit.edit_type === 'cut_section' ? 'bg-danger/15 text-danger' : 'bg-warning/15 text-warning'
+                      }`}>
+                        {edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
+                      </span>
+                      <span className="text-[10px] text-text-muted font-mono">{fmt(edit.duration_seconds)}</span>
+                      <button
+                        onClick={() => handlePlayEdit(edit.id)}
+                        className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                          playingEditId === edit.id ? 'bg-accent text-white' : 'text-accent hover:bg-accent/20'
+                        }`}
+                      >
+                        {playingEditId === edit.id ? (
+                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                        ) : (
+                          <svg className="w-2.5 h-2.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+                        )}
+                      </button>
+                      <a
+                        href={api.editStreamUrl(edit.id)}
+                        download={`${edit.name}.mp3`}
+                        className="w-5 h-5 rounded-full text-success hover:bg-success/20 flex items-center justify-center"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </a>
+                      <button
+                        onClick={() => handleDeleteEdit(edit.id)}
+                        className="w-5 h-5 rounded-full text-danger hover:bg-danger/20 flex items-center justify-center"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- Instructions --- */}
+        {selectedSong && !hasModifications && !isLoading && !loadError && duration > 0 && edits.length === 0 && clips.length === 1 && (
+          <div className="border-t border-border bg-bg-secondary px-4 py-2 text-center">
+            <span className="text-[11px] text-text-muted">
+              Reproduce el audio, pausa donde quieras cortar y presiona{' '}
+              <kbd className="bg-bg-tertiary px-1.5 py-0.5 rounded text-text-secondary font-mono text-[10px]">S</kbd>
+              {' '}para dividir
+              {' '}&middot;{' '}Ctrl + scroll para zoom
+              {!canMuteVocals && (
+                <>
+                  {' '}&middot;{' '}
+                  <button onClick={handleSeparateStems} disabled={separatingStems} className="text-accent hover:underline">
+                    {separatingStems ? 'Separando...' : 'Separar stems para mute vocal'}
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
