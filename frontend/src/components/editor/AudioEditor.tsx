@@ -43,6 +43,7 @@ export function AudioEditor() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [playingEditId, setPlayingEditId] = useState<number | null>(null);
@@ -100,9 +101,11 @@ export function AudioEditor() {
     ws.on('pause', () => setIsPlaying(false));
     ws.on('finish', () => setIsPlaying(false));
     ws.on('timeupdate', (t: number) => setCurrentTime(t));
+    ws.on('loading', (percent: number) => setLoadingProgress(percent));
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoading(false);
+      setLoadingProgress(100);
       // Enable drag selection after ready (threshold=5 so clicks still seek)
       regionsPlugin.enableDragSelection({
         color: COLORS.cut,
@@ -172,6 +175,7 @@ export function AudioEditor() {
     if (!wsRef.current || !selectedSong || selectedSong.id === loadedSongId.current) return;
     loadedSongId.current = selectedSong.id;
     setIsLoading(true);
+    setLoadingProgress(0);
     setCurrentTime(0);
     setDuration(0);
     setZoomLevel(0);
@@ -484,13 +488,13 @@ export function AudioEditor() {
           <div className="px-4 pt-3 pb-1">
             <div className="relative bg-bg-primary rounded-lg border border-border/50 overflow-hidden">
               {isLoading && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm">
-                  <div className="flex items-center gap-2 text-sm text-text-muted">
-                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                    </svg>
-                    Cargando forma de onda...
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/80 backdrop-blur-sm gap-2">
+                  <span className="text-xs text-text-muted">Cargando audio... {loadingProgress}%</span>
+                  <div className="w-48 h-1.5 bg-border/30 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent rounded-full transition-all duration-300"
+                      style={{ width: `${loadingProgress}%` }}
+                    />
                   </div>
                 </div>
               )}
@@ -739,6 +743,16 @@ export function AudioEditor() {
                           <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
                         )}
                       </button>
+                      <a
+                        href={api.editStreamUrl(edit.id)}
+                        download={`${edit.name}.mp3`}
+                        className="w-7 h-7 rounded-full bg-success/10 hover:bg-success/20 text-success flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                        title="Descargar audio editado"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </a>
                       <button
                         onClick={() => handleDeleteEdit(edit.id)}
                         className="w-7 h-7 rounded-full bg-danger/10 hover:bg-danger/20 text-danger flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"

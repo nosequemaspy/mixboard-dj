@@ -28,6 +28,3 @@ STORAGE_LIMIT_GB = int(os.environ.get("STORAGE_LIMIT_GB", "3"))
 STORAGE_LIMIT_BYTES = STORAGE_LIMIT_GB * 1024 * 1024 * 1024
 MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
 MAX_DOWNLOAD_DURATION = int(os.environ.get("MAX_DOWNLOAD_DURATION", "900"))  # 15 minutes
-
-# Demucs
-DEMUCS_MODEL = "htdemucs"
