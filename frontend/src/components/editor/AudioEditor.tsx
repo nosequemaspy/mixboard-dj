@@ -127,8 +127,13 @@ export function AudioEditor() {
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
   const clipsRef = useRef<Clip[]>([]);
-  const instrumentalRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const instrumentalBufferRef = useRef<AudioBuffer | null>(null);
+  const instrumentalSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const instrumentalGainRef = useRef<GainNode | null>(null);
   const muteActiveRef = useRef(false);
+  const muteStartCtxTimeRef = useRef(0);
+  const muteStartOffsetRef = useRef(0);
   const isPlayingRef = useRef(false);
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
@@ -228,7 +233,10 @@ export function AudioEditor() {
       ],
     });
 
-    ws.on('play', () => setIsPlaying(true));
+    ws.on('play', () => {
+      setIsPlaying(true);
+      if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
+    });
     ws.on('pause', () => setIsPlaying(false));
     ws.on('finish', () => setIsPlaying(false));
     ws.on('timeupdate', (t: number) => setCurrentTime(t));
@@ -364,31 +372,75 @@ export function AudioEditor() {
     });
   }, [clips, duration]);
 
-  // --- Load instrumental stem for preview ---
+  // --- Load instrumental stem via Web Audio API for preview ---
 
   useEffect(() => {
     if (!selectedSong || !canMuteVocals) {
-      if (instrumentalRef.current) { instrumentalRef.current.pause(); instrumentalRef.current = null; }
+      instrumentalBufferRef.current = null;
       return;
     }
-    const audio = new Audio(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
-    audio.preload = 'auto';
-    instrumentalRef.current = audio;
-    return () => { audio.pause(); instrumentalRef.current = null; };
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new AudioContext();
+          instrumentalGainRef.current = audioCtxRef.current.createGain();
+          instrumentalGainRef.current.connect(audioCtxRef.current.destination);
+        }
+        const response = await fetch(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
+        const data = await response.arrayBuffer();
+        if (cancelled) return;
+        const buffer = await audioCtxRef.current!.decodeAudioData(data);
+        if (cancelled) return;
+        instrumentalBufferRef.current = buffer;
+      } catch (e) {
+        console.error('Failed to load instrumental for editor preview:', e);
+        instrumentalBufferRef.current = null;
+      }
+    })();
+    return () => { cancelled = true; };
   }, [selectedSong?.id, canMuteVocals]);
 
   // --- Real-time preview: skip deleted clips, play instrumental for muted ---
 
   useEffect(() => {
     if (!isPlaying || !wsRef.current) {
-      // When paused, stop instrumental
+      // When paused, stop instrumental source
       if (muteActiveRef.current) {
         muteActiveRef.current = false;
         wsRef.current?.setVolume(1);
-        instrumentalRef.current?.pause();
+        if (instrumentalSourceRef.current) {
+          try { instrumentalSourceRef.current.stop(); } catch {}
+          instrumentalSourceRef.current = null;
+        }
       }
       return;
     }
+
+    const startInstrumental = (offset: number) => {
+      const ctx = audioCtxRef.current;
+      const buffer = instrumentalBufferRef.current;
+      const gain = instrumentalGainRef.current;
+      if (!ctx || !buffer || !gain) return;
+      // Stop previous source
+      if (instrumentalSourceRef.current) {
+        try { instrumentalSourceRef.current.stop(); } catch {}
+      }
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gain);
+      source.start(0, offset);
+      instrumentalSourceRef.current = source;
+      muteStartCtxTimeRef.current = ctx.currentTime;
+      muteStartOffsetRef.current = offset;
+    };
+
+    const stopInstrumental = () => {
+      if (instrumentalSourceRef.current) {
+        try { instrumentalSourceRef.current.stop(); } catch {}
+        instrumentalSourceRef.current = null;
+      }
+    };
 
     let animFrame: number;
     const check = () => {
@@ -410,24 +462,29 @@ export function AudioEditor() {
         } else {
           ws.pause();
         }
-      } else if (clip.status === 'mute' && instrumentalRef.current) {
-        // Switch to instrumental
+      } else if (clip.status === 'mute' && instrumentalBufferRef.current) {
+        // Switch to instrumental via Web Audio API
         if (!muteActiveRef.current) {
           muteActiveRef.current = true;
           ws.setVolume(0);
-          instrumentalRef.current.currentTime = t;
-          instrumentalRef.current.play().catch(() => {});
+          startInstrumental(t);
         } else {
-          // Re-sync if drift > 150ms
-          const drift = Math.abs(instrumentalRef.current.currentTime - t);
-          if (drift > 0.15) instrumentalRef.current.currentTime = t;
+          // Drift correction: if instrumental drifts >200ms from WaveSurfer, re-sync
+          const ctx = audioCtxRef.current;
+          if (ctx) {
+            const elapsed = ctx.currentTime - muteStartCtxTimeRef.current;
+            const expected = muteStartOffsetRef.current + elapsed;
+            if (Math.abs(expected - t) > 0.2) {
+              startInstrumental(t);
+            }
+          }
         }
       } else {
         // Normal clip - restore original audio
         if (muteActiveRef.current) {
           muteActiveRef.current = false;
           ws.setVolume(1);
-          instrumentalRef.current?.pause();
+          stopInstrumental();
         }
       }
 
@@ -443,7 +500,14 @@ export function AudioEditor() {
   useEffect(() => {
     return () => {
       if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
-      if (instrumentalRef.current) { instrumentalRef.current.pause(); instrumentalRef.current = null; }
+      if (instrumentalSourceRef.current) {
+        try { instrumentalSourceRef.current.stop(); } catch {}
+        instrumentalSourceRef.current = null;
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+        audioCtxRef.current = null;
+      }
     };
   }, []);
 
