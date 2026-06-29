@@ -164,7 +164,7 @@ export function AudioEditor() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedRegionId]);
 
-  // Load song into waveform
+  // Load song into waveform — fetch manually then pass blob URL to WaveSurfer
   useEffect(() => {
     if (!wsRef.current || !selectedSong || selectedSong.id === loadedSongId.current) return;
     loadedSongId.current = selectedSong.id;
@@ -183,9 +183,35 @@ export function AudioEditor() {
       setPlayingEditId(null);
     }
 
-    wsRef.current.load(api.streamUrl(selectedSong.id));
+    const ws = wsRef.current;
+    const url = api.streamUrl(selectedSong.id);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (cancelled) return;
+        const blob = await response.blob();
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        ws.load(blobUrl);
+        // Clean up blob URL after WaveSurfer reads it
+        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+        ws.once('error', () => URL.revokeObjectURL(blobUrl));
+      } catch (err: any) {
+        if (!cancelled) {
+          console.error('Audio fetch error:', err);
+          setLoadError(`Error al cargar: ${err.message}`);
+          setIsLoading(false);
+        }
+      }
+    })();
+
     setEditName(`${selectedSong.title} - edited`);
     loadEdits(selectedSong.id);
+
+    return () => { cancelled = true; };
   }, [selectedSong]);
 
   // Cleanup edit audio on unmount
@@ -510,7 +536,7 @@ export function AudioEditor() {
                   </button>
                 </div>
               )}
-              <div ref={waveContainerRef} className="w-full" />
+              <div ref={waveContainerRef} className="w-full" style={{ minHeight: '120px' }} />
             </div>
 
             {/* Zoom slider */}
