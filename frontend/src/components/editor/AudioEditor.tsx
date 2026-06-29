@@ -454,6 +454,42 @@ export function AudioEditor() {
                 </div>
               )}
               <div ref={waveContainerRef} className="w-full" />
+
+              {/* Section color overlays + split markers */}
+              {duration > 0 && (
+                <div className="absolute top-0 pointer-events-none" style={{ height: '110px', left: 0, right: 0 }}>
+                  {sections.map(section => section.action !== 'keep' && (
+                    <div
+                      key={`s-${section.index}`}
+                      className="absolute top-0 bottom-0 transition-colors"
+                      style={{
+                        left: `${(section.start / duration) * 100}%`,
+                        width: `${((section.end - section.start) / duration) * 100}%`,
+                        backgroundColor: section.action === 'cut'
+                          ? 'rgba(239, 68, 68, 0.18)'
+                          : 'rgba(245, 158, 11, 0.18)',
+                      }}
+                    />
+                  ))}
+                  {splitPoints.map((point, i) => (
+                    <div
+                      key={`m-${i}`}
+                      className="absolute top-0 bottom-0 w-0.5"
+                      style={{
+                        left: `${(point / duration) * 100}%`,
+                        background: 'rgba(255,255,255,0.6)',
+                      }}
+                    >
+                      <div
+                        className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-white/80 bg-bg-primary"
+                        style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                        title={`Split @ ${formatTime(point)} — click to remove`}
+                        onClick={() => removeSplit(i)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Zoom slider */}
