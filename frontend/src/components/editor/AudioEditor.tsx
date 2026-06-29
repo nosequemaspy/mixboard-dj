@@ -49,6 +49,7 @@ export function AudioEditor() {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [regions, setRegions] = useState<TrackedRegion[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [separatingStems, setSeparatingStems] = useState(false);
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
@@ -56,7 +57,8 @@ export function AudioEditor() {
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  const canMuteVocals = selectedSong?.stems_status === 'ready';
+  const stemsStatus = selectedSong?.stems_status;
+  const canMuteVocals = stemsStatus === 'ready';
   const hasRegions = regions.length > 0;
 
   // Initialize WaveSurfer
@@ -67,11 +69,11 @@ export function AudioEditor() {
 
     const ws = WaveSurfer.create({
       container: waveContainerRef.current,
-      waveColor: '#4f46e540',
+      waveColor: '#6366f150',
       progressColor: '#6366f1',
       cursorColor: '#e2e8f0',
       cursorWidth: 2,
-      height: 120,
+      height: 'auto' as any,
       barWidth: 2,
       barGap: 1,
       barRadius: 1,
@@ -85,7 +87,7 @@ export function AudioEditor() {
         TimelinePlugin.create({
           timeInterval: 5,
           primaryLabelInterval: 10,
-          style: { fontSize: '10px', color: '#64748b' },
+          style: { fontSize: '11px', color: '#64748b' },
         }),
         regionsPlugin,
       ],
@@ -99,7 +101,6 @@ export function AudioEditor() {
       setDuration(ws.getDuration());
       setIsLoading(false);
       setLoadError(null);
-      // Enable drag selection (threshold=5 so clicks still seek)
       regionsPlugin.enableDragSelection({
         color: COLORS.cut,
         drag: true,
@@ -112,27 +113,18 @@ export function AudioEditor() {
       setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
     });
 
-    // Region events
     regionsPlugin.on('region-created', (region: Region) => {
-      const id = region.id;
-      setRegions(prev => [...prev, { id, region, action: 'cut' }]);
-      setSelectedRegionId(id);
+      setRegions(prev => [...prev, { id: region.id, region, action: 'cut' }]);
+      setSelectedRegionId(region.id);
     });
-
     regionsPlugin.on('region-updated', (region: Region) => {
-      setRegions(prev => prev.map(r =>
-        r.id === region.id ? { ...r, region } : r
-      ));
+      setRegions(prev => prev.map(r => r.id === region.id ? { ...r, region } : r));
     });
-
     regionsPlugin.on('region-clicked', (region: Region, e: MouseEvent) => {
       e.stopPropagation();
       setSelectedRegionId(region.id);
     });
-
-    ws.on('click', () => {
-      setSelectedRegionId(null);
-    });
+    ws.on('click', () => setSelectedRegionId(null));
 
     wsRef.current = ws;
     regionsRef.current = regionsPlugin;
@@ -149,22 +141,19 @@ export function AudioEditor() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
       if (e.code === 'Space') {
         e.preventDefault();
         wsRef.current?.playPause();
-      } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (selectedRegionId) {
-          e.preventDefault();
-          removeRegion(selectedRegionId);
-        }
+      } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedRegionId) {
+        e.preventDefault();
+        removeRegion(selectedRegionId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedRegionId]);
 
-  // Load song into waveform — fetch manually then pass blob URL to WaveSurfer
+  // Load song — fetch as blob then pass to WaveSurfer
   useEffect(() => {
     if (!wsRef.current || !selectedSong || selectedSong.id === loadedSongId.current) return;
     loadedSongId.current = selectedSong.id;
@@ -184,25 +173,22 @@ export function AudioEditor() {
     }
 
     const ws = wsRef.current;
-    const url = api.streamUrl(selectedSong.id);
     let cancelled = false;
 
     (async () => {
       try {
-        const response = await fetch(url);
+        const response = await fetch(api.streamUrl(selectedSong.id));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         if (cancelled) return;
         const blob = await response.blob();
         if (cancelled) return;
         const blobUrl = URL.createObjectURL(blob);
         ws.load(blobUrl);
-        // Clean up blob URL after WaveSurfer reads it
         ws.once('ready', () => URL.revokeObjectURL(blobUrl));
         ws.once('error', () => URL.revokeObjectURL(blobUrl));
       } catch (err: any) {
         if (!cancelled) {
-          console.error('Audio fetch error:', err);
-          setLoadError(`Error al cargar: ${err.message}`);
+          setLoadError(`Error: ${err.message}`);
           setIsLoading(false);
         }
       }
@@ -210,11 +196,9 @@ export function AudioEditor() {
 
     setEditName(`${selectedSong.title} - edited`);
     loadEdits(selectedSong.id);
-
     return () => { cancelled = true; };
   }, [selectedSong]);
 
-  // Cleanup edit audio on unmount
   useEffect(() => {
     return () => {
       if (editAudioRef.current) {
@@ -225,26 +209,18 @@ export function AudioEditor() {
   }, []);
 
   const loadEdits = async (songId: number) => {
-    try {
-      setEdits(await api.getEdits(songId));
-    } catch {
-      setEdits([]);
-    }
+    try { setEdits(await api.getEdits(songId)); } catch { setEdits([]); }
   };
 
-  const togglePlayback = useCallback(() => {
-    wsRef.current?.playPause();
+  const handleZoom = useCallback((v: number) => {
+    setZoomLevel(v);
+    wsRef.current?.zoom(v);
   }, []);
 
   const seekTo = useCallback((time: number) => {
     if (!wsRef.current || duration === 0) return;
     wsRef.current.seekTo(time / duration);
   }, [duration]);
-
-  const handleZoom = useCallback((newLevel: number) => {
-    setZoomLevel(newLevel);
-    wsRef.current?.zoom(newLevel);
-  }, []);
 
   const setRegionAction = useCallback((regionId: string, action: RegionAction) => {
     setRegions(prev => prev.map(r => {
@@ -274,7 +250,6 @@ export function AudioEditor() {
     setSelectedRegionId(null);
   }, []);
 
-  // Update region visual when selection changes
   useEffect(() => {
     regions.forEach(r => {
       const isSelected = r.id === selectedRegionId;
@@ -284,6 +259,37 @@ export function AudioEditor() {
       r.region.setOptions({ color });
     });
   }, [selectedRegionId, regions]);
+
+  const handleSeparateStems = async () => {
+    if (!selectedSong || separatingStems) return;
+    setSeparatingStems(true);
+    try {
+      await api.separateStems(selectedSong.id);
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${api.streamUrl(selectedSong.id).replace('/audio/stream/', '/songs/')}`)
+            .catch(() => null);
+          if (!res) return;
+          // Re-fetch songs to get updated stems_status
+          await useLibraryStore.getState().fetchSongs();
+          const updated = useLibraryStore.getState().songs.find(s => s.id === selectedSong.id);
+          if (updated && updated.stems_status === 'ready') {
+            setSelectedSong(updated);
+            setSeparatingStems(false);
+            clearInterval(poll);
+          } else if (updated && updated.stems_status === 'error') {
+            setSeparatingStems(false);
+            clearInterval(poll);
+          }
+        } catch { /* keep polling */ }
+      }, 2000);
+      // Safety timeout
+      setTimeout(() => { clearInterval(poll); setSeparatingStems(false); }, 60000);
+    } catch {
+      setSeparatingStems(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!selectedSong || !editName.trim() || !hasRegions) return;
@@ -332,10 +338,7 @@ export function AudioEditor() {
       editAudioRef.current.pause();
       editAudioRef.current = null;
     }
-    if (playingEditId === editId) {
-      setPlayingEditId(null);
-      return;
-    }
+    if (playingEditId === editId) { setPlayingEditId(null); return; }
     const audio = new Audio(api.editStreamUrl(editId));
     audio.play();
     audio.onended = () => { setPlayingEditId(null); editAudioRef.current = null; };
@@ -371,18 +374,18 @@ export function AudioEditor() {
   return (
     <div className="flex h-full bg-bg-secondary">
       {/* Song sidebar */}
-      <div className="w-56 border-r border-border flex flex-col flex-shrink-0">
-        <div className="px-3 py-2 border-b border-border">
-          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Songs</span>
-          <div className="mt-1.5 relative">
-            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="w-48 border-r border-border flex flex-col flex-shrink-0">
+        <div className="px-2 py-2 border-b border-border">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Canciones</span>
+          <div className="mt-1 relative">
+            <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar..."
-              className="w-full bg-bg-primary border border-border/60 rounded-md pl-7 pr-2 py-1 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
+              className="w-full bg-bg-primary border border-border/60 rounded pl-6 pr-2 py-1 text-[11px] text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
             />
           </div>
         </div>
@@ -398,410 +401,298 @@ export function AudioEditor() {
             >
               <button
                 onClick={() => { setSelectedSong(song); setDeleteConfirm(null); }}
-                className="w-full text-left px-3 py-2 pr-8"
+                className="w-full text-left px-2 py-1.5 pr-7"
               >
-                <div className="text-xs text-text-primary truncate font-medium">{song.title}</div>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="text-[11px] text-text-primary truncate font-medium">{song.title}</div>
+                <div className="flex items-center gap-1 mt-0.5">
                   <span className="text-[10px] text-text-muted truncate">{song.artist}</span>
                   <span className="text-[10px] text-text-muted/60 font-mono ml-auto">{formatTime(song.duration_seconds)}</span>
                 </div>
               </button>
-              {deleteConfirm === song.id ? (
-                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 z-10">
-                  <button
-                    onClick={() => handleDeleteSong(song.id)}
-                    className="text-[9px] bg-danger text-white px-1.5 py-0.5 rounded font-bold hover:bg-danger/80"
-                  >
-                    Si
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirm(null)}
-                    className="text-[9px] bg-bg-tertiary text-text-muted px-1.5 py-0.5 rounded hover:bg-bg-hover"
-                  >
-                    No
-                  </button>
-                </div>
-              ) : (
-                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a
-                    href={api.downloadUrl(song.id)}
-                    className="text-text-muted hover:text-accent p-1"
-                    title="Descargar"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                  </a>
-                  <button
-                    onClick={() => setDeleteConfirm(song.id)}
-                    className="text-text-muted hover:text-danger p-1"
-                    title="Eliminar"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => setDeleteConfirm(song.id)}
+                  className="text-text-muted hover:text-danger p-0.5"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {deleteConfirm === song.id && (
+                <div className="absolute inset-0 bg-bg-primary/95 flex items-center justify-center gap-1 z-10">
+                  <button onClick={() => handleDeleteSong(song.id)} className="text-[9px] bg-danger text-white px-1.5 py-0.5 rounded font-bold">Si</button>
+                  <button onClick={() => setDeleteConfirm(null)} className="text-[9px] bg-bg-tertiary text-text-muted px-1.5 py-0.5 rounded">No</button>
                 </div>
               )}
             </div>
           ))}
           {filteredSongs.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-text-muted">No se encontraron canciones</div>
+            <div className="px-2 py-4 text-center text-[10px] text-text-muted">Sin resultados</div>
           )}
         </div>
       </div>
 
-      {/* Main editor area */}
+      {/* Main editor */}
       {selectedSong ? (
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Song info bar */}
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-bg-secondary">
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-text-primary truncate">{selectedSong.title}</h3>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-text-muted">{selectedSong.artist}</span>
-                <span className="text-[10px] text-text-muted/50">·</span>
-                <span className="text-[10px] text-text-muted font-mono">{formatTime(selectedSong.duration_seconds)}</span>
-                {selectedSong.bpm && (
-                  <>
-                    <span className="text-[10px] text-text-muted/50">·</span>
-                    <span className="text-[10px] text-text-muted font-mono">{selectedSong.bpm} BPM</span>
-                  </>
-                )}
-                {canMuteVocals && (
-                  <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold ml-1">STEMS READY</span>
-                )}
-                {selectedSong.stems_status === 'processing' && (
-                  <span className="text-[9px] bg-warning/15 text-warning px-1.5 py-0.5 rounded font-bold ml-1 animate-pulse">PROCESANDO STEMS...</span>
-                )}
-              </div>
-            </div>
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Top bar: song info + transport + zoom */}
+          <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-bg-primary/50">
+            {/* Play button */}
             <button
-              onClick={() => setDeleteConfirm(selectedSong.id)}
-              className="text-text-muted hover:text-danger transition-colors p-1.5 rounded hover:bg-danger/10"
-              title="Eliminar cancion"
+              onClick={() => wsRef.current?.playPause()}
+              disabled={isLoading || duration === 0}
+              className="w-8 h-8 rounded-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white flex items-center justify-center transition-colors flex-shrink-0"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              {isPlaying ? (
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+              ) : (
+                <svg className="w-3.5 h-3.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+              )}
             </button>
+
+            {/* Time */}
+            <span className="text-xs font-mono text-accent tabular-nums">
+              {formatTime(currentTime)}
+            </span>
+            <span className="text-xs text-text-muted">/</span>
+            <span className="text-xs font-mono text-text-muted tabular-nums">
+              {formatTime(duration)}
+            </span>
+
+            <div className="w-px h-5 bg-border/50" />
+
+            {/* Song title */}
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-text-primary font-medium truncate block">{selectedSong.title}</span>
+            </div>
+
+            {/* Stems status + separate button */}
+            {canMuteVocals ? (
+              <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold">STEMS</span>
+            ) : (
+              <button
+                onClick={handleSeparateStems}
+                disabled={separatingStems || stemsStatus === 'processing'}
+                className={`text-[9px] px-2 py-0.5 rounded font-bold transition-all ${
+                  separatingStems || stemsStatus === 'processing'
+                    ? 'bg-warning/15 text-warning animate-pulse'
+                    : 'bg-accent/15 text-accent hover:bg-accent/25'
+                }`}
+              >
+                {separatingStems || stemsStatus === 'processing' ? 'SEPARANDO...' : 'SEPARAR STEMS'}
+              </button>
+            )}
+
+            <div className="w-px h-5 bg-border/50" />
+
+            {/* Zoom */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <svg className="w-3 h-3 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                type="range"
+                min="1"
+                max="200"
+                step="1"
+                value={zoomLevel}
+                onChange={e => handleZoom(Number(e.target.value))}
+                className="w-24 h-1 accent-accent"
+                disabled={duration === 0}
+              />
+              <span className="text-[9px] text-text-muted font-mono w-6 text-right">{zoomLevel}x</span>
+            </div>
           </div>
 
-          {/* Delete confirmation banner */}
-          {deleteConfirm === selectedSong.id && (
-            <div className="px-4 py-2 bg-danger/10 border-b border-danger/20 flex items-center gap-3">
-              <span className="text-xs text-danger font-medium">Eliminar "{selectedSong.title}" permanentemente?</span>
-              <div className="flex-1" />
-              <Button size="sm" variant="danger" onClick={() => handleDeleteSong(selectedSong.id)}>Eliminar</Button>
-              <Button size="sm" variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+          {/* Waveform — fills all available space */}
+          <div
+            className="flex-1 relative bg-bg-primary"
+            style={{ overflowX: 'auto', overflowY: 'hidden' }}
+            onWheel={e => {
+              if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -10 : 10;
+                handleZoom(Math.max(1, Math.min(200, zoomLevel + delta)));
+              }
+            }}
+          >
+            {isLoading && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/90 gap-3">
+                <svg className="animate-spin w-8 h-8 text-accent" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                <span className="text-sm text-text-muted">Cargando audio...</span>
+              </div>
+            )}
+            {loadError && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/95 gap-2">
+                <span className="text-sm text-danger">{loadError}</span>
+                <button
+                  onClick={() => {
+                    loadedSongId.current = null;
+                    setSelectedSong({ ...selectedSong });
+                  }}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Reintentar
+                </button>
+              </div>
+            )}
+            <div ref={waveContainerRef} className="w-full h-full" />
+          </div>
+
+          {/* Bottom panel: regions + save + edits */}
+          {(hasRegions || edits.length > 0) && (
+            <div className="border-t border-border bg-bg-secondary max-h-[35%] overflow-y-auto">
+              {/* Regions */}
+              {hasRegions && (
+                <div className="px-4 pt-2 pb-1">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
+                      Selecciones ({regions.length})
+                    </span>
+                    <div className="flex-1" />
+                    <button onClick={clearAllRegions} className="text-[10px] text-text-muted hover:text-danger">
+                      Limpiar
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {regions.map(({ id, region, action }) => (
+                      <div
+                        key={id}
+                        onClick={() => { setSelectedRegionId(id); seekTo(region.start); }}
+                        className={`flex items-center gap-1.5 border rounded px-2 py-1 cursor-pointer transition-colors text-[10px] ${
+                          selectedRegionId === id
+                            ? action === 'cut' ? 'border-danger/60 bg-danger/5' : 'border-warning/60 bg-warning/5'
+                            : 'border-border/40 hover:border-border bg-bg-primary'
+                        }`}
+                      >
+                        <span className="font-mono text-accent">{formatTime(region.start)}</span>
+                        <span className="text-text-muted">{'\u2192'}</span>
+                        <span className="font-mono text-text-secondary">{formatTime(region.end)}</span>
+                        <span className="text-text-muted/50 font-mono">({formatTime(region.end - region.start)})</span>
+
+                        <div className="flex gap-0.5 ml-1">
+                          <button
+                            onClick={e => { e.stopPropagation(); setRegionAction(id, 'cut'); }}
+                            className={`px-1.5 py-0.5 rounded font-bold ${
+                              action === 'cut' ? 'bg-danger/20 text-danger' : 'text-text-muted hover:text-danger'
+                            }`}
+                          >
+                            Cortar
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setRegionAction(id, 'mute'); }}
+                            disabled={!canMuteVocals}
+                            className={`px-1.5 py-0.5 rounded font-bold ${
+                              action === 'mute' ? 'bg-warning/20 text-warning' : 'text-text-muted hover:text-warning disabled:opacity-30'
+                            }`}
+                            title={canMuteVocals ? 'Reducir vocales' : 'Separa stems primero'}
+                          >
+                            Mute Vocal
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={e => { e.stopPropagation(); removeRegion(id); }}
+                          className="text-text-muted hover:text-danger ml-0.5"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Save */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      placeholder="Nombre del edit"
+                      className="flex-1 bg-bg-primary border border-border/60 rounded px-2 py-1 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
+                    />
+                    <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !editName.trim()}>
+                      {saving ? 'Guardando...' : 'Guardar'}
+                    </Button>
+                  </div>
+                  {!canMuteVocals && regions.some(r => r.action === 'mute') && (
+                    <p className="text-[10px] text-warning mt-1 flex items-center gap-1">
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                      Primero separa los stems para usar Mute Vocal
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Saved edits */}
+              {edits.length > 0 && (
+                <div className="px-4 py-2 border-t border-border/30">
+                  <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
+                    Edits guardados ({edits.length})
+                  </span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {edits.map(edit => (
+                      <div key={edit.id} className="flex items-center gap-1.5 bg-bg-primary border border-border/40 rounded px-2 py-1 group">
+                        <span className="text-[11px] text-text-primary font-medium truncate max-w-[150px]">{edit.name}</span>
+                        <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${
+                          edit.edit_type === 'cut_section' ? 'bg-danger/15 text-danger' : 'bg-warning/15 text-warning'
+                        }`}>
+                          {edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
+                        </span>
+                        <span className="text-[10px] text-text-muted font-mono">{formatTime(edit.duration_seconds)}</span>
+                        <button
+                          onClick={() => handlePlayEdit(edit.id)}
+                          className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                            playingEditId === edit.id ? 'bg-accent text-white' : 'text-accent hover:bg-accent/20'
+                          }`}
+                        >
+                          {playingEditId === edit.id ? (
+                            <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                          ) : (
+                            <svg className="w-2.5 h-2.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+                          )}
+                        </button>
+                        <a
+                          href={api.editStreamUrl(edit.id)}
+                          download={`${edit.name}.mp3`}
+                          className="w-5 h-5 rounded-full text-success hover:bg-success/20 flex items-center justify-center"
+                        >
+                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </a>
+                        <button
+                          onClick={() => handleDeleteEdit(edit.id)}
+                          className="w-5 h-5 rounded-full text-danger hover:bg-danger/20 flex items-center justify-center"
+                        >
+                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Waveform timeline */}
-          <div className="px-4 pt-3 pb-1">
-            <div
-              className="relative bg-bg-primary rounded-lg border border-border/50"
-              style={{ overflowX: 'auto', overflowY: 'hidden' }}
-              onWheel={e => {
-                if (e.ctrlKey || e.metaKey) {
-                  e.preventDefault();
-                  const delta = e.deltaY > 0 ? -10 : 10;
-                  const newZoom = Math.max(1, Math.min(200, zoomLevel + delta));
-                  handleZoom(newZoom);
-                }
-              }}
-            >
-              {isLoading && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/80 backdrop-blur-sm gap-2">
-                  <svg className="animate-spin w-6 h-6 text-accent" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  <span className="text-xs text-text-muted">Cargando audio...</span>
-                </div>
-              )}
-              {loadError && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/90 gap-2">
-                  <span className="text-xs text-danger">{loadError}</span>
-                  <button
-                    onClick={() => {
-                      if (wsRef.current && selectedSong) {
-                        loadedSongId.current = null;
-                        setSelectedSong({ ...selectedSong });
-                      }
-                    }}
-                    className="text-[10px] text-accent hover:underline"
-                  >
-                    Reintentar
-                  </button>
-                </div>
-              )}
-              <div ref={waveContainerRef} className="w-full" style={{ minHeight: '120px' }} />
-            </div>
-
-            {/* Zoom slider */}
-            {duration > 0 && (
-              <div className="flex items-center gap-2 mt-1.5">
-                <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><path d="M8 11h6" />
-                </svg>
-                <input
-                  type="range"
-                  min="1"
-                  max="200"
-                  step="1"
-                  value={zoomLevel}
-                  onChange={e => handleZoom(Number(e.target.value))}
-                  className="flex-1 h-1 accent-accent"
-                />
-                <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><path d="M8 11h6M11 8v6" />
-                </svg>
-                <span className="text-[10px] text-text-muted font-mono min-w-[32px] text-right">{zoomLevel}x</span>
-              </div>
-            )}
-          </div>
-
-          {/* Transport + region actions */}
-          <div className="flex items-center gap-2 px-4 py-2">
-            <button
-              onClick={togglePlayback}
-              disabled={isLoading || duration === 0}
-              className="w-9 h-9 rounded-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white flex items-center justify-center transition-colors flex-shrink-0"
-            >
-              {isPlaying ? (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-              ) : (
-                <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-              )}
-            </button>
-            <span className="text-xs font-mono text-text-secondary tabular-nums min-w-[100px]">
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
-
-            <div className="w-px h-5 bg-border/50 mx-1" />
-
-            {/* Hint */}
-            {!hasRegions && duration > 0 && (
-              <span className="text-[10px] text-text-muted">
-                Arrastra sobre la forma de onda para seleccionar una zona · Ctrl+Scroll para zoom
+          {/* Instruction when no regions and waveform loaded */}
+          {!hasRegions && !isLoading && !loadError && duration > 0 && edits.length === 0 && (
+            <div className="border-t border-border bg-bg-secondary px-4 py-2 text-center">
+              <span className="text-[11px] text-text-muted">
+                Arrastra sobre la forma de onda para seleccionar una zona
+                {' '}&middot;{' '}Ctrl + scroll para zoom
+                {!canMuteVocals && <>{' '}&middot;{' '}<button onClick={handleSeparateStems} disabled={separatingStems} className="text-accent hover:underline">{separatingStems ? 'Separando...' : 'Separar stems para mute vocal'}</button></>}
               </span>
-            )}
-
-            <div className="flex-1" />
-
-            {hasRegions && (
-              <Button size="sm" variant="ghost" onClick={clearAllRegions}>
-                Limpiar todo
-              </Button>
-            )}
-          </div>
-
-          {/* Regions list + Save + Saved edits */}
-          <div className="flex-1 overflow-y-auto px-4 pb-3">
-            {/* Region list */}
-            {hasRegions && (
-              <div className="mb-3">
-                <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-1.5">
-                  Selecciones ({regions.length})
-                </div>
-                <div className="space-y-1">
-                  {regions.map(({ id, region, action }) => (
-                    <div
-                      key={id}
-                      onClick={() => { setSelectedRegionId(id); seekTo(region.start); }}
-                      className={`flex items-center gap-2 bg-bg-primary border rounded-md px-2.5 py-1.5 cursor-pointer transition-colors ${
-                        selectedRegionId === id
-                          ? action === 'cut' ? 'border-danger/60 bg-danger/5' : 'border-warning/60 bg-warning/5'
-                          : 'border-border/40 hover:border-border'
-                      }`}
-                    >
-                      <button
-                        onClick={(e) => { e.stopPropagation(); seekTo(region.start); }}
-                        className="text-[10px] font-mono text-accent hover:underline cursor-pointer flex-shrink-0"
-                      >
-                        {formatTime(region.start)}
-                      </button>
-                      <span className="text-[10px] text-text-muted">{'\u2192'}</span>
-                      <span className="text-[10px] font-mono text-text-secondary flex-shrink-0">
-                        {formatTime(region.end)}
-                      </span>
-                      <span className="text-[10px] text-text-muted/60 font-mono">
-                        ({formatTime(region.end - region.start)})
-                      </span>
-
-                      <div className="flex-1" />
-
-                      {/* Action buttons */}
-                      <div className="flex bg-bg-secondary rounded-md p-0.5 gap-0.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRegionAction(id, 'cut'); }}
-                          className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                            action === 'cut'
-                              ? 'bg-danger/20 text-danger shadow-sm'
-                              : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
-                          }`}
-                        >
-                          Cortar
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setRegionAction(id, 'mute'); }}
-                          disabled={!canMuteVocals}
-                          className={`px-2 py-0.5 text-[10px] font-bold rounded transition-colors ${
-                            action === 'mute'
-                              ? 'bg-warning/20 text-warning shadow-sm'
-                              : 'text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed'
-                          }`}
-                          title={canMuteVocals ? 'Reducir vocales en esta zona' : 'Primero separa los stems'}
-                        >
-                          Mute Vocal
-                        </button>
-                      </div>
-
-                      {/* Remove button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeRegion(id); }}
-                        className="text-text-muted hover:text-danger p-0.5 transition-colors"
-                        title="Eliminar seleccion"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {!canMuteVocals && regions.some(r => r.action === 'mute') && (
-                  <p className="text-[10px] text-warning mt-1.5 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                    Separa los stems de la cancion para usar Mute Vocal
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Save form */}
-            {hasRegions && (
-              <div className="bg-bg-primary border border-border/50 rounded-lg p-3 mb-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    placeholder="Nombre del edit"
-                    className="flex-1 bg-bg-secondary border border-border/60 rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent/60"
-                  />
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={saving || !editName.trim()}
-                  >
-                    {saving ? (
-                      <span className="flex items-center gap-1.5">
-                        <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                        </svg>
-                        Guardando...
-                      </span>
-                    ) : 'Guardar Edit'}
-                  </Button>
-                </div>
-                <p className="text-[10px] text-text-muted mt-1.5">
-                  {regions.filter(r => r.action === 'cut').length > 0 && (
-                    <span className="text-danger">{regions.filter(r => r.action === 'cut').length} zona(s) se cortaran. </span>
-                  )}
-                  {regions.filter(r => r.action === 'mute').length > 0 && (
-                    <span className="text-warning">{regions.filter(r => r.action === 'mute').length} zona(s) tendran vocales reducidas.</span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* Help text when no regions */}
-            {!hasRegions && !isLoading && !loadError && duration > 0 && edits.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-6 text-text-muted">
-                <svg className="w-10 h-10 mb-3 opacity-25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <path d="M9 3v18M15 3v18" />
-                </svg>
-                <p className="text-xs font-medium">Arrastra sobre la forma de onda</p>
-                <p className="text-[10px] mt-1 text-text-muted/60">
-                  Click y arrastra para seleccionar una zona, luego elige <strong className="text-danger">Cortar</strong> o <strong className="text-warning">Mute Vocal</strong>
-                </p>
-                <p className="text-[10px] mt-0.5 text-text-muted/60">
-                  Ctrl + rueda del mouse para hacer zoom
-                </p>
-              </div>
-            )}
-
-            {/* Saved edits */}
-            {edits.length > 0 && (
-              <div>
-                <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold mb-1.5">
-                  Edits Guardados ({edits.length})
-                </div>
-                <div className="space-y-1">
-                  {edits.map(edit => (
-                    <div
-                      key={edit.id}
-                      className="flex items-center gap-2 bg-bg-primary border border-border/40 rounded-md px-3 py-2 group"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-primary font-medium truncate">{edit.name}</span>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                            edit.edit_type === 'trim' ? 'bg-accent/15 text-accent'
-                            : edit.edit_type === 'cut_section' ? 'bg-danger/15 text-danger'
-                            : 'bg-warning/15 text-warning'
-                          }`}>
-                            {edit.edit_type === 'trim' ? 'trim' : edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-text-muted font-mono">{formatTime(edit.duration_seconds)}</span>
-                      </div>
-                      <button
-                        onClick={() => handlePlayEdit(edit.id)}
-                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-                          playingEditId === edit.id
-                            ? 'bg-accent text-white'
-                            : 'bg-accent/10 hover:bg-accent/20 text-accent opacity-0 group-hover:opacity-100'
-                        }`}
-                        title={playingEditId === edit.id ? 'Detener' : 'Preview'}
-                      >
-                        {playingEditId === edit.id ? (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-                        ) : (
-                          <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-                        )}
-                      </button>
-                      <a
-                        href={api.editStreamUrl(edit.id)}
-                        download={`${edit.name}.mp3`}
-                        className="w-7 h-7 rounded-full bg-success/10 hover:bg-success/20 text-success flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-                        title="Descargar"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </a>
-                      <button
-                        onClick={() => handleDeleteEdit(edit.id)}
-                        className="w-7 h-7 rounded-full bg-danger/10 hover:bg-danger/20 text-danger flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
-                        title="Eliminar"
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center text-text-muted gap-3">
