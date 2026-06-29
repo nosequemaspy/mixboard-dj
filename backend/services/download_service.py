@@ -20,23 +20,9 @@ def sanitize_filename(name: str) -> str:
     return name[:200] if name else "download"
 
 
-def _find_js_runtimes() -> dict | None:
-    """Find a JS runtime (node/deno/bun) for yt-dlp signature extraction."""
-    import shutil
-    for runtime in ("node", "deno", "bun"):
-        path = shutil.which(runtime)
-        if path:
-            return {runtime: {"path": path}}
-    return None
-
-
 def _base_ydl_opts() -> dict:
-    """Common yt-dlp options with JS runtime if available."""
-    opts = {"quiet": True, "no_warnings": True}
-    js_runtimes = _find_js_runtimes()
-    if js_runtimes:
-        opts["js_runtimes"] = js_runtimes
-    return opts
+    """Common yt-dlp options."""
+    return {"quiet": True, "no_warnings": True}
 
 
 def get_video_info(url: str) -> dict:

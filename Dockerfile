@@ -11,11 +11,9 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies for audio processing
-# nodejs is needed by yt-dlp for YouTube signature extraction
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
