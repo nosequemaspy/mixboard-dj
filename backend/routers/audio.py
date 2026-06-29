@@ -138,14 +138,21 @@ def list_edits(song_id: int, db: Session = Depends(get_db)):
 
 @router.post("/edit", response_model=EditedSongResponse)
 def create_edit(data: EditRequest, db: Session = Depends(get_db)):
-    if data.edit_type == "trim":
-        return trim_audio(db, data.song_id, data.name, data.params["start_seconds"], data.params["end_seconds"])
-    elif data.edit_type == "cut_section":
-        return cut_sections(db, data.song_id, data.name, data.params["sections"])
-    elif data.edit_type == "vocal_mute_section":
-        return vocal_mute_sections(db, data.song_id, data.name, data.params["sections"])
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown edit type: {data.edit_type}")
+    try:
+        if data.edit_type == "trim":
+            return trim_audio(db, data.song_id, data.name, data.params["start_seconds"], data.params["end_seconds"])
+        elif data.edit_type == "cut_section":
+            return cut_sections(db, data.song_id, data.name, data.params["sections"])
+        elif data.edit_type == "vocal_mute_section":
+            return vocal_mute_sections(db, data.song_id, data.name, data.params["sections"])
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown edit type: {data.edit_type}")
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar: {str(e)}")
 
 
 @router.delete("/edit/{edit_id}")

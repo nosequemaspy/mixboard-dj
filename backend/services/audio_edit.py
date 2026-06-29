@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from pydub import AudioSegment
@@ -8,6 +9,13 @@ from config import EDITS_DIR, STEMS_DIR, SONGS_DIR, STORAGE_DIR
 from models.song import Song
 from models.edit import EditedSong
 from models.stem import Stem
+
+
+def sanitize_filename(name: str) -> str:
+    """Remove characters that are invalid in filenames."""
+    safe = re.sub(r'[<>:"/\\|?*]', '', name).strip()
+    safe = safe[:200] if len(safe) > 200 else safe
+    return safe or "edit"
 
 
 def get_absolute_path(relative_path: str) -> Path:
@@ -37,7 +45,8 @@ def trim_audio(db: Session, song_id: int, name: str, start_seconds: float, end_s
 
     output_dir = EDITS_DIR / str(song_id)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{name}.mp3"
+    safe_name = sanitize_filename(name)
+    output_path = output_dir / f"{safe_name}.mp3"
     trimmed.export(str(output_path), format="mp3", bitrate="320k")
 
     edited = EditedSong(
@@ -78,7 +87,8 @@ def cut_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> 
 
     output_dir = EDITS_DIR / str(song_id)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{name}.mp3"
+    safe_name = sanitize_filename(name)
+    output_path = output_dir / f"{safe_name}.mp3"
     result.export(str(output_path), format="mp3", bitrate="320k")
 
     edited = EditedSong(
@@ -150,7 +160,8 @@ def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dic
 
     output_dir = EDITS_DIR / str(song_id)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{name}.mp3"
+    safe_name = sanitize_filename(name)
+    output_path = output_dir / f"{safe_name}.mp3"
     result.export(str(output_path), format="mp3", bitrate="320k")
 
     edited = EditedSong(

@@ -127,8 +127,12 @@ export function AudioEditor() {
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
   const clipsRef = useRef<Clip[]>([]);
+  const instrumentalRef = useRef<HTMLAudioElement | null>(null);
+  const muteActiveRef = useRef(false);
+  const isPlayingRef = useRef(false);
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   const stemsStatus = selectedSong?.stems_status;
   const canMuteVocals = stemsStatus === 'ready';
@@ -360,10 +364,87 @@ export function AudioEditor() {
     });
   }, [clips, duration]);
 
+  // --- Load instrumental stem for preview ---
+
+  useEffect(() => {
+    if (!selectedSong || !canMuteVocals) {
+      if (instrumentalRef.current) { instrumentalRef.current.pause(); instrumentalRef.current = null; }
+      return;
+    }
+    const audio = new Audio(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
+    audio.preload = 'auto';
+    instrumentalRef.current = audio;
+    return () => { audio.pause(); instrumentalRef.current = null; };
+  }, [selectedSong?.id, canMuteVocals]);
+
+  // --- Real-time preview: skip deleted clips, play instrumental for muted ---
+
+  useEffect(() => {
+    if (!isPlaying || !wsRef.current) {
+      // When paused, stop instrumental
+      if (muteActiveRef.current) {
+        muteActiveRef.current = false;
+        wsRef.current?.setVolume(1);
+        instrumentalRef.current?.pause();
+      }
+      return;
+    }
+
+    let animFrame: number;
+    const check = () => {
+      const ws = wsRef.current;
+      if (!ws || !isPlayingRef.current) return;
+      const t = ws.getCurrentTime();
+      const currentClips = clipsRef.current;
+      if (currentClips.length === 0) { animFrame = requestAnimationFrame(check); return; }
+
+      const clip = findClipAt(t, currentClips);
+      if (!clip) { animFrame = requestAnimationFrame(check); return; }
+
+      if (clip.status === 'delete') {
+        // Skip to the next non-deleted clip
+        const idx = currentClips.indexOf(clip);
+        const next = currentClips.slice(idx + 1).find(c => c.status !== 'delete');
+        if (next) {
+          ws.seekTo(next.start / ws.getDuration());
+        } else {
+          ws.pause();
+        }
+      } else if (clip.status === 'mute' && instrumentalRef.current) {
+        // Switch to instrumental
+        if (!muteActiveRef.current) {
+          muteActiveRef.current = true;
+          ws.setVolume(0);
+          instrumentalRef.current.currentTime = t;
+          instrumentalRef.current.play().catch(() => {});
+        } else {
+          // Re-sync if drift > 150ms
+          const drift = Math.abs(instrumentalRef.current.currentTime - t);
+          if (drift > 0.15) instrumentalRef.current.currentTime = t;
+        }
+      } else {
+        // Normal clip - restore original audio
+        if (muteActiveRef.current) {
+          muteActiveRef.current = false;
+          ws.setVolume(1);
+          instrumentalRef.current?.pause();
+        }
+      }
+
+      animFrame = requestAnimationFrame(check);
+    };
+
+    animFrame = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(animFrame);
+  }, [isPlaying]);
+
   // --- Cleanup ---
 
   useEffect(() => {
-    return () => { if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; } };
+    return () => {
+      if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
+      if (instrumentalRef.current) { instrumentalRef.current.pause(); instrumentalRef.current = null; }
+    };
   }, []);
 
   // --- Handlers ---
