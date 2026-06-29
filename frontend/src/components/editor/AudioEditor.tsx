@@ -131,6 +131,7 @@ export function AudioEditor() {
   const instrumentalBufferRef = useRef<AudioBuffer | null>(null);
   const instrumentalSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const instrumentalGainRef = useRef<GainNode | null>(null);
+  const instrumentalDataRef = useRef<ArrayBuffer | null>(null);
   const muteActiveRef = useRef(false);
   const muteStartCtxTimeRef = useRef(0);
   const muteStartOffsetRef = useRef(0);
@@ -146,6 +147,28 @@ export function AudioEditor() {
   const deletedDuration = clips.filter(c => c.status === 'delete').reduce((s, c) => s + (c.end - c.start), 0);
   const mutedCount = clips.filter(c => c.status === 'mute').length;
   const deletedCount = clips.filter(c => c.status === 'delete').length;
+
+  // --- AudioContext setup (must be called from user gesture for autoplay policy) ---
+
+  const ensureAudioCtx = useCallback(async () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+      instrumentalGainRef.current = audioCtxRef.current.createGain();
+      instrumentalGainRef.current.connect(audioCtxRef.current.destination);
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      await audioCtxRef.current.resume();
+    }
+    // Decode pending instrumental data if available
+    if (instrumentalDataRef.current && !instrumentalBufferRef.current) {
+      try {
+        instrumentalBufferRef.current = await audioCtxRef.current.decodeAudioData(instrumentalDataRef.current);
+        instrumentalDataRef.current = null;
+      } catch (e) {
+        console.error('Failed to decode instrumental:', e);
+      }
+    }
+  }, []);
 
   // --- Clip actions ---
 
@@ -235,7 +258,7 @@ export function AudioEditor() {
 
     ws.on('play', () => {
       setIsPlaying(true);
-      if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
+      ensureAudioCtx();
     });
     ws.on('pause', () => setIsPlaying(false));
     ws.on('finish', () => setIsPlaying(false));
@@ -270,6 +293,7 @@ export function AudioEditor() {
 
       if (e.code === 'Space') {
         e.preventDefault();
+        ensureAudioCtx();
         wsRef.current?.playPause();
       } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
@@ -289,7 +313,7 @@ export function AudioEditor() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, toggleClipStatus, undo, selectedClipId]);
+  }, [splitAtPlayhead, toggleClipStatus, undo, selectedClipId, ensureAudioCtx]);
 
   // --- Load song ---
 
@@ -372,30 +396,33 @@ export function AudioEditor() {
     });
   }, [clips, duration]);
 
-  // --- Load instrumental stem via Web Audio API for preview ---
+  // --- Load instrumental stem data for preview ---
 
   useEffect(() => {
     if (!selectedSong || !canMuteVocals) {
+      instrumentalDataRef.current = null;
       instrumentalBufferRef.current = null;
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        if (!audioCtxRef.current) {
-          audioCtxRef.current = new AudioContext();
-          instrumentalGainRef.current = audioCtxRef.current.createGain();
-          instrumentalGainRef.current.connect(audioCtxRef.current.destination);
-        }
         const response = await fetch(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
         const data = await response.arrayBuffer();
         if (cancelled) return;
-        const buffer = await audioCtxRef.current!.decodeAudioData(data);
-        if (cancelled) return;
-        instrumentalBufferRef.current = buffer;
+        // If AudioContext already exists and running, decode immediately
+        const ctx = audioCtxRef.current;
+        if (ctx && ctx.state === 'running') {
+          const buffer = await ctx.decodeAudioData(data);
+          if (cancelled) return;
+          instrumentalBufferRef.current = buffer;
+          instrumentalDataRef.current = null;
+        } else {
+          // Store raw data — will be decoded on first play (user gesture)
+          instrumentalDataRef.current = data;
+        }
       } catch (e) {
-        console.error('Failed to load instrumental for editor preview:', e);
-        instrumentalBufferRef.current = null;
+        console.error('Failed to load instrumental:', e);
       }
     })();
     return () => { cancelled = true; };
@@ -678,7 +705,7 @@ export function AudioEditor() {
         {selectedSong && (
           <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-bg-primary/50">
             <button
-              onClick={() => wsRef.current?.playPause()}
+              onClick={() => { ensureAudioCtx(); wsRef.current?.playPause(); }}
               disabled={isLoading || duration === 0}
               className="w-8 h-8 rounded-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white flex items-center justify-center transition-colors flex-shrink-0"
             >
