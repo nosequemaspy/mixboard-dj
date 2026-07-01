@@ -63,7 +63,17 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
     loadedSongId.current = song.id;
     // Empty the waveform first so old data doesn't linger on load failure
     wsRef.current.empty();
-    wsRef.current.load(api.streamUrl(song.id));
+    // Use pre-computed peaks if available (instant render, no audio download)
+    if (song.waveform_peaks && song.duration_seconds > 0) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        wsRef.current.load('', [peaks], song.duration_seconds);
+      } catch {
+        wsRef.current.load(api.streamUrl(song.id));
+      }
+    } else {
+      wsRef.current.load(api.streamUrl(song.id));
+    }
   }, [song?.id]);
 
   useEffect(() => {
