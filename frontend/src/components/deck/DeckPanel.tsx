@@ -31,12 +31,14 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
     if (!songData) return;
     try {
       const song: Song = JSON.parse(songData);
+      console.log(`[DeckPanel] handleDrop(${deckId}): song=${song.id} "${song.title}" stems=${song.stems_status}`);
       loadSong(deckId, song);
       const duration = await engine.loadSong(deckId, song.id, song.stems_status === 'ready');
+      console.log(`[DeckPanel] handleDrop(${deckId}): loadSong returned duration=${duration}`);
 
       // If another song was loaded while we were fetching, abort
       const currentSong = useDeckStore.getState().getDeck(deckId).song;
-      if (currentSong?.id !== song.id) return;
+      if (currentSong?.id !== song.id) { console.log(`[DeckPanel] handleDrop: aborted, deck song changed`); return; }
 
       setDuration(deckId, duration);
 
@@ -76,8 +78,8 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
       } catch {
         // Edits fetch failed, non-critical
       }
-    } catch (err) {
-      console.error('Failed to load song:', err);
+    } catch (err: any) {
+      console.error(`[DeckPanel] handleDrop(${deckId}) FAILED:`, err?.message || err);
     }
   }, [deckId, loadSong, setDuration, setMuteSections, updateSongInDeck, engine]);
 

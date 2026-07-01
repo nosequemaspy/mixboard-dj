@@ -239,16 +239,21 @@ export class AudioEngine {
     const gen = ++deck.loadGeneration;
 
     // Load original
+    console.log(`[AudioEngine] loadSong(${deckId}, ${songId}): fetching original...`);
     const origResponse = await fetch(api.streamUrl(songId));
-    if (deck.loadGeneration !== gen) return 0; // superseded by newer load
+    if (deck.loadGeneration !== gen) { console.log('[AudioEngine] loadSong: aborted (gen mismatch after fetch)'); return 0; }
+    if (!origResponse.ok) throw new Error(`Original fetch failed: HTTP ${origResponse.status}`);
     const origData = await origResponse.arrayBuffer();
-    if (deck.loadGeneration !== gen) return 0;
+    if (deck.loadGeneration !== gen) { console.log('[AudioEngine] loadSong: aborted (gen mismatch after arrayBuffer)'); return 0; }
+    console.log(`[AudioEngine] loadSong: decoding ${origData.byteLength} bytes...`);
     deck.bufferOriginal = await this.ctx.decodeAudioData(origData);
     if (deck.loadGeneration !== gen) { deck.bufferOriginal = null; return 0; }
+    console.log(`[AudioEngine] loadSong: original decoded, duration=${deck.bufferOriginal.duration.toFixed(1)}s`);
 
-    // Load instrumental if stems ready
+    // Load instrumental if stems ready (non-blocking for play)
     if (hasStems) {
       try {
+        console.log(`[AudioEngine] loadSong: fetching instrumental...`);
         const instResponse = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
         if (deck.loadGeneration !== gen) return deck.bufferOriginal.duration;
         if (!instResponse.ok) throw new Error(`HTTP ${instResponse.status}`);
@@ -268,7 +273,6 @@ export class AudioEngine {
           srcInst.connect(deck.gainInstrumental);
           deck.sourceInstrumental = srcInst;
           srcInst.start(0, currentOffset);
-          console.log(`[AudioEngine] loadSong: instrumental source started (was already playing) at offset ${currentOffset.toFixed(1)}`);
         }
       } catch (err) {
         console.error('[AudioEngine] loadSong: instrumental FAILED:', err);
