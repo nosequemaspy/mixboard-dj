@@ -225,8 +225,13 @@ export class AudioEngine {
     if (this.ctx.state === 'suspended') await this.ctx.resume();
     const deck = this.decks.get(deckId)!;
 
-    // Stop if playing
+    // Stop and clear old buffers immediately so play() can't use stale audio
     if (deck.isPlaying) this.stop(deckId);
+    this.cleanupSources(deck);
+    deck.bufferOriginal = null;
+    deck.bufferInstrumental = null;
+    deck.pauseOffset = 0;
+    deck.autoMuteState = false;
 
     // Load original
     const origResponse = await fetch(api.streamUrl(songId));
@@ -262,7 +267,6 @@ export class AudioEngine {
       deck.bufferInstrumental = null;
     }
 
-    deck.pauseOffset = 0;
     deck.gainOriginal.gain.value = 1;
     deck.gainInstrumental.gain.value = 0;
 
