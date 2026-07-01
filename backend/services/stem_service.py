@@ -42,13 +42,20 @@ async def separate_stems(db: Session, song_id: int) -> str:
             instrumental_path = output_dir / "instrumental.mp3"
 
             def run_ffmpeg():
-                # Partial center cancellation (0.7 instead of 1.0) + EQ compensation
-                # so the track still sounds full instead of hollow/silent
+                # Multi-band center cancellation for vocal removal:
+                # 1. Keep bass (<200Hz) from original - vocals are not here,
+                #    preserving kick drum and bass guitar intact
+                # 2. Apply 90% center cancellation to mids/highs (>200Hz)
+                #    where vocals are center-panned
+                # 3. Mix both bands back and normalize volume
                 af_filter = (
-                    "pan=stereo|c0=c0-0.7*c1|c1=c1-0.7*c0,"
-                    "lowshelf=f=250:g=4,"
-                    "highshelf=f=3000:g=3,"
-                    "dynaudnorm=p=0.9"
+                    "asplit=2[low][cancel];"
+                    "[low]lowpass=f=200,volume=2.0[bass];"
+                    "[cancel]highpass=f=200,"
+                    "pan=stereo|c0=c0-0.9*c1|c1=c1-0.9*c0,"
+                    "volume=2.0[vocal_removed];"
+                    "[bass][vocal_removed]amix=inputs=2:duration=longest,"
+                    "dynaudnorm=p=0.95:m=10"
                 )
                 cmd = [
                     "ffmpeg", "-y",
@@ -79,7 +86,7 @@ async def separate_stems(db: Session, song_id: int) -> str:
                 song_id=song_id,
                 stem_type="instrumental",
                 file_path=str(instrumental_path.relative_to(STEMS_DIR.parent.parent)),
-                model_used="ffmpeg-vocal-reduce",
+                model_used="ffmpeg-multiband-vocal-reduce",
             )
             db.add(stem)
 

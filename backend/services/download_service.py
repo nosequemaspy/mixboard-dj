@@ -1,11 +1,15 @@
 import asyncio
+import logging
 import re
+import subprocess
 from pathlib import Path
 
 import httpx
 from sqlalchemy.orm import Session
 
-from config import SONGS_DIR, AUDIO_QUALITY, MAX_DOWNLOAD_DURATION, COBALT_API_URL
+logger = logging.getLogger(__name__)
+
+from config import SONGS_DIR, AUDIO_QUALITY, MAX_DOWNLOAD_DURATION
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
 from services.analysis import analyze_audio_fast, analyze_audio_full
@@ -43,38 +47,6 @@ async def get_video_info(url: str) -> dict:
     }
 
 
-def _extract_cobalt_url(cobalt_data: dict) -> str:
-    """Extract download URL from cobalt response, handling all status types."""
-    status = cobalt_data.get("status")
-
-    if status == "error":
-        error = cobalt_data.get("error", "unknown")
-        if isinstance(error, dict):
-            error = error.get("code", "unknown")
-        raise RuntimeError(f"Cobalt error: {error}")
-
-    # tunnel and redirect both have a top-level url
-    if status in ("tunnel", "redirect"):
-        download_url = cobalt_data.get("url")
-        if download_url:
-            return download_url
-
-    # picker: cobalt returns multiple options, grab the first one
-    if status == "picker":
-        picker = cobalt_data.get("picker")
-        if picker and len(picker) > 0:
-            download_url = picker[0].get("url")
-            if download_url:
-                return download_url
-
-    # Fallback: try url field regardless of status
-    download_url = cobalt_data.get("url")
-    if download_url:
-        return download_url
-
-    raise RuntimeError(f"Cobalt: no download URL (status={status})")
-
-
 async def download_from_youtube(db: Session, url: str, title: str | None = None, artist: str | None = None) -> str:
     # Pre-check: storage space available
     has_space, used, limit = check_storage_available(needed_bytes=15 * 1024 * 1024)  # estimate 15MB needed
@@ -101,48 +73,30 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
 
             await update_task_progress(db, task_id, 0.2, "running")
 
-            # Request audio URL from cobalt API
-            async with httpx.AsyncClient(timeout=60) as client:
-                cobalt_resp = await client.post(
-                    f"{COBALT_API_URL}/",
-                    json={
-                        "url": url,
-                        "audioFormat": "mp3",
-                        "audioBitrate": AUDIO_QUALITY,
-                        "downloadMode": "audio",
-                    },
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                    },
-                )
-                cobalt_resp.raise_for_status()
-                cobalt_data = cobalt_resp.json()
-
-            download_url = _extract_cobalt_url(cobalt_data)
+            # Download audio using yt-dlp
+            cmd = [
+                "yt-dlp",
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--audio-quality", AUDIO_QUALITY,
+                "-o", str(final_path),
+                "--no-playlist",
+                "--max-filesize", "50m",
+                url,
+            ]
+            logger.info(f"Running yt-dlp: {' '.join(cmd)}")
 
             await update_task_progress(db, task_id, 0.3, "running")
 
-            # Stream the MP3 to disk (64KB chunks, ~64KB peak memory)
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=15, read=60, write=15, pool=15),
-                follow_redirects=True,
-            ) as client:
-                async with client.stream("GET", download_url) as stream:
-                    stream.raise_for_status()
-                    total = int(stream.headers.get("content-length", 0))
-                    downloaded = 0
-                    last_reported_pct = 0.3
-                    with open(final_path, "wb") as f:
-                        async for chunk in stream.aiter_bytes(chunk_size=65536):
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total > 0:
-                                pct = 0.3 + 0.55 * (downloaded / total)
-                                # Throttle: only report every ~5% to avoid DB thrashing
-                                if pct - last_reported_pct >= 0.05:
-                                    last_reported_pct = pct
-                                    await update_task_progress(db, task_id, min(pct, 0.85), "running")
+            result = await asyncio.to_thread(
+                subprocess.run, cmd,
+                capture_output=True, text=True, timeout=300,
+            )
+
+            if result.returncode != 0:
+                stderr = result.stderr or result.stdout or "Unknown error"
+                logger.error(f"yt-dlp failed (code {result.returncode}): {stderr}")
+                raise RuntimeError(f"yt-dlp failed: {stderr[:200]}")
 
             await update_task_progress(db, task_id, 0.85, "running")
 
@@ -185,6 +139,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             asyncio.create_task(_background_analyze(db, song_id, file_path_str))
 
         except Exception as e:
+            logger.error(f"Download failed: {type(e).__name__}: {e}")
             # Cleanup partial file on failure
             if final_path and final_path.exists():
                 final_path.unlink(missing_ok=True)

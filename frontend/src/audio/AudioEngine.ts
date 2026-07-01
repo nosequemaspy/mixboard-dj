@@ -1,4 +1,4 @@
-import type { DeckId, CrossfaderCurve } from '../types';
+import type { DeckId, CrossfaderCurve, MuteSection } from '../types';
 import { api } from '../api/http';
 
 interface DeckNodes {
@@ -20,6 +20,9 @@ interface DeckNodes {
   isPlaying: boolean;
   playbackRate: number;
   cueEnabled: boolean;
+  muteSections: MuteSection[];
+  muteSectionsActive: boolean;
+  autoMuteState: boolean;
 }
 
 export class AudioEngine {
@@ -154,6 +157,9 @@ export class AudioEngine {
       isPlaying: false,
       playbackRate: 1,
       cueEnabled: false,
+      muteSections: [],
+      muteSectionsActive: true,
+      autoMuteState: false,
     };
   }
 
@@ -189,6 +195,24 @@ export class AudioEngine {
             this.onEnded?.(deckId);
           } else {
             this.onTimeUpdate?.(deckId, currentTime);
+
+            // Section-based auto-muting
+            if (deck.muteSectionsActive && deck.muteSections.length > 0 && deck.bufferInstrumental) {
+              const inSection = deck.muteSections.some(s => currentTime >= s.start && currentTime < s.end);
+              if (inSection && !deck.autoMuteState) {
+                // Entering a mute section — crossfade to instrumental
+                deck.autoMuteState = true;
+                const t = this.ctx.currentTime;
+                deck.gainOriginal.gain.linearRampToValueAtTime(0, t + 0.02);
+                deck.gainInstrumental.gain.linearRampToValueAtTime(1, t + 0.02);
+              } else if (!inSection && deck.autoMuteState) {
+                // Leaving a mute section — crossfade back to original
+                deck.autoMuteState = false;
+                const t = this.ctx.currentTime;
+                deck.gainOriginal.gain.linearRampToValueAtTime(1, t + 0.02);
+                deck.gainInstrumental.gain.linearRampToValueAtTime(0, t + 0.02);
+              }
+            }
           }
         }
       }
@@ -213,9 +237,25 @@ export class AudioEngine {
     if (hasStems) {
       try {
         const instResponse = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
+        if (!instResponse.ok) throw new Error(`HTTP ${instResponse.status}`);
         const instData = await instResponse.arrayBuffer();
         deck.bufferInstrumental = await this.ctx.decodeAudioData(instData);
-      } catch {
+        console.log(`[AudioEngine] loadSong: instrumental loaded, ${deck.bufferInstrumental.duration.toFixed(1)}s`);
+
+        // If user already clicked play while we were loading, start the source now
+        if (deck.isPlaying && !deck.sourceInstrumental) {
+          const elapsed = (this.ctx.currentTime - deck.startTime) * deck.playbackRate;
+          const currentOffset = deck.pauseOffset + elapsed;
+          const srcInst = this.ctx.createBufferSource();
+          srcInst.buffer = deck.bufferInstrumental;
+          srcInst.playbackRate.value = deck.playbackRate;
+          srcInst.connect(deck.gainInstrumental);
+          deck.sourceInstrumental = srcInst;
+          srcInst.start(0, currentOffset);
+          console.log(`[AudioEngine] loadSong: instrumental source started (was already playing) at offset ${currentOffset.toFixed(1)}`);
+        }
+      } catch (err) {
+        console.error('[AudioEngine] loadSong: instrumental FAILED:', err);
         deck.bufferInstrumental = null;
       }
     } else {
@@ -234,8 +274,14 @@ export class AudioEngine {
     const deck = this.decks.get(deckId)!;
     try {
       const response = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
+      if (!response.ok) {
+        console.error(`[AudioEngine] Instrumental fetch failed: HTTP ${response.status}`);
+        return false;
+      }
       const data = await response.arrayBuffer();
+      console.log(`[AudioEngine] Instrumental fetched: ${data.byteLength} bytes`);
       deck.bufferInstrumental = await this.ctx.decodeAudioData(data);
+      console.log(`[AudioEngine] Instrumental decoded: ${deck.bufferInstrumental.duration.toFixed(1)}s, channels: ${deck.bufferInstrumental.numberOfChannels}`);
 
       // If currently playing, start instrumental source at correct offset
       if (deck.isPlaying) {
@@ -255,7 +301,8 @@ export class AudioEngine {
         srcInst.start(0, currentOffset);
       }
       return true;
-    } catch {
+    } catch (err) {
+      console.error('[AudioEngine] loadInstrumentalHot FAILED:', err);
       return false;
     }
   }
@@ -280,11 +327,15 @@ export class AudioEngine {
       srcInst.connect(deck.gainInstrumental);
       deck.sourceInstrumental = srcInst;
       srcInst.start(0, deck.pauseOffset);
+      console.log(`[AudioEngine] play: instrumental source STARTED at offset ${deck.pauseOffset.toFixed(1)}`);
+    } else {
+      console.log('[AudioEngine] play: NO instrumental buffer, skipping');
     }
 
     srcOrig.start(0, deck.pauseOffset);
     deck.startTime = this.ctx.currentTime;
     deck.isPlaying = true;
+    console.log(`[AudioEngine] play: ctxState=${this.ctx.state}, gainOrig=${deck.gainOriginal.gain.value}, gainInst=${deck.gainInstrumental.gain.value}`);
   }
 
   pause(deckId: DeckId) {
@@ -342,12 +393,49 @@ export class AudioEngine {
 
   setVocalMute(deckId: DeckId, muted: boolean) {
     const deck = this.decks.get(deckId)!;
-    if (!deck.bufferInstrumental) return;
+    if (!deck.bufferInstrumental) {
+      console.warn(`[AudioEngine] setVocalMute(${muted}): NO instrumental buffer loaded!`);
+      return;
+    }
+
+    // If playing but instrumental source doesn't exist yet, create it now
+    if (muted && deck.isPlaying && !deck.sourceInstrumental) {
+      const elapsed = (this.ctx.currentTime - deck.startTime) * deck.playbackRate;
+      const currentOffset = deck.pauseOffset + elapsed;
+
+      const srcInst = this.ctx.createBufferSource();
+      srcInst.buffer = deck.bufferInstrumental;
+      srcInst.playbackRate.value = deck.playbackRate;
+      srcInst.connect(deck.gainInstrumental);
+      deck.sourceInstrumental = srcInst;
+      srcInst.start(0, currentOffset);
+      console.log(`[AudioEngine] setVocalMute: created missing source at offset ${currentOffset.toFixed(1)}`);
+    }
+
+    console.log(`[AudioEngine] setVocalMute(${muted}): sourceInst=${!!deck.sourceInstrumental}, playing=${deck.isPlaying}`);
     const t = this.ctx.currentTime;
     if (muted) {
       deck.gainOriginal.gain.linearRampToValueAtTime(0, t + 0.02);
       deck.gainInstrumental.gain.linearRampToValueAtTime(1, t + 0.02);
     } else {
+      deck.gainOriginal.gain.linearRampToValueAtTime(1, t + 0.02);
+      deck.gainInstrumental.gain.linearRampToValueAtTime(0, t + 0.02);
+    }
+  }
+
+  setMuteSections(deckId: DeckId, sections: MuteSection[]) {
+    const deck = this.decks.get(deckId)!;
+    deck.muteSections = sections;
+    deck.autoMuteState = false;
+  }
+
+  setMuteSectionsActive(deckId: DeckId, active: boolean) {
+    const deck = this.decks.get(deckId)!;
+    deck.muteSectionsActive = active;
+    if (!active && deck.autoMuteState) {
+      // Turning off — restore original audio
+      deck.autoMuteState = false;
+      const t = this.ctx.currentTime;
       deck.gainOriginal.gain.linearRampToValueAtTime(1, t + 0.02);
       deck.gainInstrumental.gain.linearRampToValueAtTime(0, t + 0.02);
     }

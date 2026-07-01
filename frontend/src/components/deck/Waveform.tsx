@@ -1,25 +1,31 @@
 import { useEffect, useRef } from 'react';
 import WaveSurfer from 'wavesurfer.js';
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 import { api } from '../../api/http';
-import type { DeckId, Song } from '../../types';
+import type { DeckId, MuteSection, Song } from '../../types';
 
 interface WaveformProps {
   deckId: DeckId;
   song: Song | null;
   currentTime: number;
   duration: number;
+  muteSections: MuteSection[];
   onSeek: (time: number) => void;
 }
 
-export function Waveform({ deckId, song, currentTime, duration, onSeek }: WaveformProps) {
+export function Waveform({ deckId, song, currentTime, duration, muteSections, onSeek }: WaveformProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
+  const regionsRef = useRef<RegionsPlugin | null>(null);
   const loadedSongId = useRef<number | null>(null);
   const onSeekRef = useRef(onSeek);
   onSeekRef.current = onSeek;
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    const regions = RegionsPlugin.create();
+    regionsRef.current = regions;
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
@@ -34,6 +40,7 @@ export function Waveform({ deckId, song, currentTime, duration, onSeek }: Wavefo
       normalize: true,
       interact: true,
       hideScrollbar: true,
+      plugins: [regions],
     });
 
     // 'interaction' fires only on user clicks, not on programmatic seekTo
@@ -46,6 +53,7 @@ export function Waveform({ deckId, song, currentTime, duration, onSeek }: Wavefo
     return () => {
       ws.destroy();
       wsRef.current = null;
+      regionsRef.current = null;
     };
   }, [deckId]);
 
@@ -60,6 +68,22 @@ export function Waveform({ deckId, song, currentTime, duration, onSeek }: Wavefo
     const progress = currentTime / duration;
     wsRef.current.seekTo(Math.min(1, Math.max(0, progress)));
   }, [currentTime, duration]);
+
+  // Draw mute section regions
+  useEffect(() => {
+    const regions = regionsRef.current;
+    if (!regions) return;
+    regions.clearRegions();
+    for (const section of muteSections) {
+      regions.addRegion({
+        start: section.start,
+        end: section.end,
+        color: 'rgba(245, 158, 11, 0.25)',
+        drag: false,
+        resize: false,
+      });
+    }
+  }, [muteSections]);
 
   return (
     <div className="w-full bg-bg-primary rounded-md overflow-hidden border border-border/50">

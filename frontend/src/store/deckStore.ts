@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DeckId, DeckState, Song } from '../types';
+import type { DeckId, DeckState, MuteSection, Song } from '../types';
 
 const defaultDeck = (id: DeckId): DeckState => ({
   id,
@@ -14,6 +14,8 @@ const defaultDeck = (id: DeckId): DeckState => ({
   eqHigh: 0,
   vocalMuted: false,
   cuePoint: 0,
+  muteSections: [],
+  muteSectionsActive: true,
 });
 
 interface DeckStore {
@@ -31,6 +33,8 @@ interface DeckStore {
   setEQ: (id: DeckId, band: 'eqLow' | 'eqMid' | 'eqHigh', value: number) => void;
   setVocalMuted: (id: DeckId, muted: boolean) => void;
   setCuePoint: (id: DeckId, time: number) => void;
+  setMuteSections: (id: DeckId, sections: MuteSection[]) => void;
+  setMuteSectionsActive: (id: DeckId, active: boolean) => void;
   setCrossfader: (value: number) => void;
 }
 
@@ -47,6 +51,8 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       currentTime: 0,
       cuePoint: 0,
       vocalMuted: false,
+      muteSections: [],
+      muteSectionsActive: true,
     },
   })),
   updateSongInDeck: (id, updates) => set(state => {
@@ -103,6 +109,18 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
     [id === 'A' ? 'deckA' : 'deckB']: {
       ...state[id === 'A' ? 'deckA' : 'deckB'],
       cuePoint: time,
+    },
+  })),
+  setMuteSections: (id, sections) => set(state => ({
+    [id === 'A' ? 'deckA' : 'deckB']: {
+      ...state[id === 'A' ? 'deckA' : 'deckB'],
+      muteSections: sections,
+    },
+  })),
+  setMuteSectionsActive: (id, active) => set(state => ({
+    [id === 'A' ? 'deckA' : 'deckB']: {
+      ...state[id === 'A' ? 'deckA' : 'deckB'],
+      muteSectionsActive: active,
     },
   })),
   setCrossfader: (value) => set({ crossfader: value }),

@@ -90,11 +90,7 @@ def download_song(song_id: int, db: Session = Depends(get_db)):
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     filename = f"{song.artist} - {song.title}{file_path.suffix}"
-    return FileResponse(
-        file_path,
-        filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return FileResponse(file_path, filename=filename)
 
 
 @router.get("/stem/{stem_id}")

@@ -74,6 +74,11 @@ export interface BackgroundTaskInfo {
 
 export type DeckId = 'A' | 'B';
 
+export interface MuteSection {
+  start: number;
+  end: number;
+}
+
 export interface DeckState {
   id: DeckId;
   song: Song | null;
@@ -87,6 +92,8 @@ export interface DeckState {
   eqHigh: number;
   vocalMuted: boolean;
   cuePoint: number;
+  muteSections: MuteSection[];
+  muteSectionsActive: boolean;
 }
 
 export interface MidiMapping {

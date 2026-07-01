@@ -120,6 +120,7 @@ export function AudioEditor() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [separatingStems, setSeparatingStems] = useState(false);
+  const [instStatus, setInstStatus] = useState<'none' | 'loading' | 'ready' | 'playing' | 'error'>('none');
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
@@ -127,14 +128,14 @@ export function AudioEditor() {
   const loadedSongId = useRef<number | null>(null);
   const editAudioRef = useRef<HTMLAudioElement | null>(null);
   const clipsRef = useRef<Clip[]>([]);
+  // Web Audio API refs for instrumental (same approach as AudioEngine/deck)
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const instrumentalBufferRef = useRef<AudioBuffer | null>(null);
-  const instrumentalSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const instrumentalGainRef = useRef<GainNode | null>(null);
-  const instrumentalDataRef = useRef<ArrayBuffer | null>(null);
+  const instBufferRef = useRef<AudioBuffer | null>(null);
+  const instSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const instGainRef = useRef<GainNode | null>(null);
+  const instStartedAtRef = useRef(0);   // ctx.currentTime when source started
+  const instOffsetRef = useRef(0);      // song offset when source started
   const muteActiveRef = useRef(false);
-  const muteStartCtxTimeRef = useRef(0);
-  const muteStartOffsetRef = useRef(0);
   const isPlayingRef = useRef(false);
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
@@ -148,28 +149,57 @@ export function AudioEditor() {
   const mutedCount = clips.filter(c => c.status === 'mute').length;
   const deletedCount = clips.filter(c => c.status === 'delete').length;
 
-  // --- AudioContext setup (must be called from user gesture for autoplay policy) ---
-  // AudioContext is used ONLY for instrumental playback.
-  // WaveSurfer's original audio is muted/unmuted via media.muted property.
+  // --- Web Audio: start instrumental source at a given offset ---
+  const startInstAt = useCallback((offset: number) => {
+    const ctx = audioCtxRef.current;
+    const buffer = instBufferRef.current;
+    const gain = instGainRef.current;
+    if (!ctx || !buffer || !gain) return;
 
-  const ensureAudioCtx = useCallback(async () => {
+    // Stop previous source
+    if (instSourceRef.current) {
+      try { instSourceRef.current.stop(); } catch {}
+      instSourceRef.current.disconnect();
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(gain);
+    const clamped = Math.max(0, Math.min(offset, buffer.duration));
+    src.start(0, clamped);
+
+    instSourceRef.current = src;
+    instStartedAtRef.current = ctx.currentTime;
+    instOffsetRef.current = clamped;
+
+    src.onended = () => {
+      if (instSourceRef.current === src) instSourceRef.current = null;
+    };
+  }, []);
+
+  // --- Web Audio: stop instrumental ---
+  const stopInst = useCallback(() => {
+    if (instSourceRef.current) {
+      try { instSourceRef.current.stop(); } catch {}
+      instSourceRef.current.disconnect();
+      instSourceRef.current = null;
+    }
+    if (instGainRef.current) instGainRef.current.gain.value = 0;
+  }, []);
+
+  // --- Ensure AudioContext created & resumed (call from user gesture) ---
+  const ensureCtx = useCallback(() => {
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
-      instrumentalGainRef.current = audioCtxRef.current.createGain();
-      instrumentalGainRef.current.connect(audioCtxRef.current.destination);
+      const g = audioCtxRef.current.createGain();
+      g.gain.value = 0;
+      g.connect(audioCtxRef.current.destination);
+      instGainRef.current = g;
     }
     if (audioCtxRef.current.state === 'suspended') {
-      await audioCtxRef.current.resume();
+      audioCtxRef.current.resume();
     }
-    // Decode pending instrumental data if available
-    if (instrumentalDataRef.current && !instrumentalBufferRef.current) {
-      try {
-        instrumentalBufferRef.current = await audioCtxRef.current.decodeAudioData(instrumentalDataRef.current);
-        instrumentalDataRef.current = null;
-      } catch (e) {
-        console.error('Failed to decode instrumental:', e);
-      }
-    }
+    return audioCtxRef.current;
   }, []);
 
   // --- Clip actions ---
@@ -260,10 +290,21 @@ export function AudioEditor() {
 
     ws.on('play', () => {
       setIsPlaying(true);
-      ensureAudioCtx();
+      // Start instrumental source at current position
+      if (instBufferRef.current && audioCtxRef.current) {
+        if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+        startInstAt(ws.getCurrentTime());
+        setInstStatus('playing');
+      }
     });
-    ws.on('pause', () => setIsPlaying(false));
-    ws.on('finish', () => setIsPlaying(false));
+    ws.on('pause', () => {
+      setIsPlaying(false);
+      stopInst();
+    });
+    ws.on('finish', () => {
+      setIsPlaying(false);
+      stopInst();
+    });
     ws.on('timeupdate', (t: number) => setCurrentTime(t));
     ws.on('ready', () => {
       setDuration(ws.getDuration());
@@ -279,6 +320,10 @@ export function AudioEditor() {
     ws.on('seeking', (t: number) => {
       const clip = findClipAt(t, clipsRef.current);
       if (clip) setSelectedClipId(clip.id);
+      // Re-start instrumental at new position if playing
+      if (instSourceRef.current && instGainRef.current) {
+        startInstAt(t);
+      }
     });
 
     wsRef.current = ws;
@@ -295,7 +340,7 @@ export function AudioEditor() {
 
       if (e.code === 'Space') {
         e.preventDefault();
-        ensureAudioCtx();
+        ensureCtx();
         wsRef.current?.playPause();
       } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
@@ -315,7 +360,7 @@ export function AudioEditor() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, toggleClipStatus, undo, selectedClipId, ensureAudioCtx]);
+  }, [splitAtPlayhead, toggleClipStatus, undo, selectedClipId, ensureCtx]);
 
   // --- Load song ---
 
@@ -398,79 +443,82 @@ export function AudioEditor() {
     });
   }, [clips, duration]);
 
-  // --- Load instrumental stem data for preview ---
+  // --- Load instrumental as AudioBuffer (Web Audio API, like the deck) ---
+  // Fetches the instrumental stem, decodes it into an AudioBuffer.
+  // The AudioBufferSourceNode is created/started when playback begins.
 
   useEffect(() => {
     if (!selectedSong || !canMuteVocals) {
-      instrumentalDataRef.current = null;
-      instrumentalBufferRef.current = null;
+      stopInst();
+      instBufferRef.current = null;
+      setInstStatus('none');
       return;
     }
+    setInstStatus('loading');
     let cancelled = false;
+
     (async () => {
       try {
-        const response = await fetch(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
-        const data = await response.arrayBuffer();
-        if (cancelled) return;
-        // If AudioContext already exists and running, decode immediately
-        const ctx = audioCtxRef.current;
-        if (ctx && ctx.state === 'running') {
-          const buffer = await ctx.decodeAudioData(data);
-          if (cancelled) return;
-          instrumentalBufferRef.current = buffer;
-          instrumentalDataRef.current = null;
-        } else {
-          // Store raw data — will be decoded on first play (user gesture)
-          instrumentalDataRef.current = data;
+        // Ensure AudioContext exists (may be suspended, that's fine for decoding)
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new AudioContext();
+          const g = audioCtxRef.current.createGain();
+          g.gain.value = 0;
+          g.connect(audioCtxRef.current.destination);
+          instGainRef.current = g;
         }
-      } catch (e) {
-        console.error('Failed to load instrumental:', e);
+        const ctx = audioCtxRef.current;
+
+        const resp = await fetch(api.stemByTypeUrl(selectedSong.id, 'instrumental'));
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const arrayBuf = await resp.arrayBuffer();
+        if (cancelled) return;
+
+        const decoded = await ctx.decodeAudioData(arrayBuf);
+        if (cancelled) return;
+
+        instBufferRef.current = decoded;
+        console.log('[Editor] Instrumental buffer decoded, duration:', decoded.duration.toFixed(1));
+
+        // If playback is already active, start the source immediately
+        if (isPlayingRef.current && wsRef.current && ctx.state === 'running') {
+          startInstAt(wsRef.current.getCurrentTime());
+          setInstStatus('playing');
+          console.log('[Editor] Buffer loaded while playing — source started');
+        } else {
+          setInstStatus('ready');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[Editor] Failed to load instrumental:', err);
+          setInstStatus('error');
+        }
       }
     })();
-    return () => { cancelled = true; };
-  }, [selectedSong?.id, canMuteVocals]);
 
-  // --- Real-time preview: skip deleted clips, play instrumental for muted ---
-  // Mutes WaveSurfer via media.muted and plays instrumental via AudioContext.
+    return () => {
+      cancelled = true;
+      stopInst();
+      instBufferRef.current = null;
+    };
+  }, [selectedSong?.id, canMuteVocals, stopInst, startInstAt]);
+
+  // --- Real-time preview: skip deleted clips, crossfade for muted ---
+  // WaveSurfer plays the original via its internal HTMLMediaElement.
+  // Instrumental plays via Web Audio API (AudioBufferSourceNode → GainNode).
+  // On mute sections: original.muted=true, gain.value=1 (hear instrumental).
+  // On normal sections: original.muted=false, gain.value=0 (hear original).
 
   useEffect(() => {
     if (!isPlaying || !wsRef.current) {
-      // When paused, unmute original and stop instrumental
       if (muteActiveRef.current) {
         muteActiveRef.current = false;
-        try { const m = wsRef.current?.getMediaElement(); if (m) m.muted = false; } catch {}
-        if (instrumentalSourceRef.current) {
-          try { instrumentalSourceRef.current.stop(); } catch {}
-          instrumentalSourceRef.current = null;
-        }
+        const m = wsRef.current?.getMediaElement();
+        if (m) m.muted = false;
       }
+      if (instGainRef.current) instGainRef.current.gain.value = 0;
       return;
     }
-
-    const startInstrumental = (offset: number) => {
-      const ctx = audioCtxRef.current;
-      const buffer = instrumentalBufferRef.current;
-      const gain = instrumentalGainRef.current;
-      if (!ctx || !buffer || !gain) return;
-      // Stop previous source
-      if (instrumentalSourceRef.current) {
-        try { instrumentalSourceRef.current.stop(); } catch {}
-      }
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(gain);
-      source.start(0, offset);
-      instrumentalSourceRef.current = source;
-      muteStartCtxTimeRef.current = ctx.currentTime;
-      muteStartOffsetRef.current = offset;
-    };
-
-    const stopInstrumental = () => {
-      if (instrumentalSourceRef.current) {
-        try { instrumentalSourceRef.current.stop(); } catch {}
-        instrumentalSourceRef.current = null;
-      }
-    };
 
     let animFrame: number;
     const check = () => {
@@ -480,41 +528,45 @@ export function AudioEditor() {
       const currentClips = clipsRef.current;
       if (currentClips.length === 0) { animFrame = requestAnimationFrame(check); return; }
 
+      const gain = instGainRef.current;
+      const hasSource = !!instSourceRef.current;
+
       const clip = findClipAt(t, currentClips);
       if (!clip) { animFrame = requestAnimationFrame(check); return; }
 
       if (clip.status === 'delete') {
-        // Skip to the next non-deleted clip
         const idx = currentClips.indexOf(clip);
         const next = currentClips.slice(idx + 1).find(c => c.status !== 'delete');
         if (next) {
           ws.seekTo(next.start / ws.getDuration());
+          if (hasSource) startInstAt(next.start);
         } else {
           ws.pause();
         }
-      } else if (clip.status === 'mute' && instrumentalBufferRef.current) {
-        if (!muteActiveRef.current) {
-          // Mute original (absolute silence), play instrumental
+      } else if (clip.status === 'mute') {
+        // Mute section: try to crossfade to instrumental
+        if (hasSource && gain) {
+          // Source exists — crossfade
+          const m = ws.getMediaElement();
+          if (m && !m.muted) m.muted = true;
+          if (gain.gain.value !== 1) gain.gain.value = 1;
           muteActiveRef.current = true;
-          try { ws.getMediaElement().muted = true; } catch {}
-          startInstrumental(t);
-        } else {
-          // Drift correction: re-sync if >200ms drift
-          const ctx = audioCtxRef.current;
-          if (ctx) {
-            const elapsed = ctx.currentTime - muteStartCtxTimeRef.current;
-            const expected = muteStartOffsetRef.current + elapsed;
-            if (Math.abs(expected - t) > 0.2) {
-              startInstrumental(t);
-            }
-          }
+        } else if (instBufferRef.current && audioCtxRef.current?.state === 'running') {
+          // No source but buffer available — create source on-the-fly
+          startInstAt(t);
+          const m = ws.getMediaElement();
+          if (m) m.muted = true;
+          if (instGainRef.current) instGainRef.current.gain.value = 1;
+          muteActiveRef.current = true;
         }
+        // If no buffer at all, just play original normally (no muting)
       } else {
-        // Normal clip - unmute original, stop instrumental
-        if (muteActiveRef.current) {
+        // Normal section OR mute without instrumental: play original
+        if (muteActiveRef.current || (gain && gain.gain.value !== 0)) {
           muteActiveRef.current = false;
-          try { ws.getMediaElement().muted = false; } catch {}
-          stopInstrumental();
+          const m = ws.getMediaElement();
+          if (m && m.muted) m.muted = false;
+          if (gain) gain.gain.value = 0;
         }
       }
 
@@ -523,23 +575,20 @@ export function AudioEditor() {
 
     animFrame = requestAnimationFrame(check);
     return () => cancelAnimationFrame(animFrame);
-  }, [isPlaying]);
+  }, [isPlaying, startInstAt]);
 
   // --- Cleanup ---
 
   useEffect(() => {
     return () => {
       if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
-      if (instrumentalSourceRef.current) {
-        try { instrumentalSourceRef.current.stop(); } catch {}
-        instrumentalSourceRef.current = null;
-      }
+      stopInst();
       if (audioCtxRef.current) {
         audioCtxRef.current.close();
         audioCtxRef.current = null;
       }
     };
-  }, []);
+  }, [stopInst]);
 
   // --- Handlers ---
 
@@ -708,7 +757,7 @@ export function AudioEditor() {
         {selectedSong && (
           <div className="flex items-center gap-3 px-4 py-1.5 border-b border-border bg-bg-primary/50">
             <button
-              onClick={() => { ensureAudioCtx(); wsRef.current?.playPause(); }}
+              onClick={() => { ensureCtx(); wsRef.current?.playPause(); }}
               disabled={isLoading || duration === 0}
               className="w-8 h-8 rounded-full bg-accent hover:bg-accent-hover disabled:opacity-40 text-white flex items-center justify-center transition-colors flex-shrink-0"
             >
@@ -730,7 +779,22 @@ export function AudioEditor() {
             </div>
 
             {canMuteVocals ? (
-              <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold">STEMS</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold">STEMS</span>
+                {instStatus !== 'none' && (
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                    instStatus === 'playing' ? 'bg-success/15 text-success' :
+                    instStatus === 'ready' ? 'bg-accent/15 text-accent' :
+                    instStatus === 'loading' ? 'bg-warning/15 text-warning animate-pulse' :
+                    'bg-danger/15 text-danger'
+                  }`}>
+                    {instStatus === 'playing' ? 'INST OK' :
+                     instStatus === 'ready' ? 'INST LISTO' :
+                     instStatus === 'loading' ? 'CARGANDO...' :
+                     'INST ERROR'}
+                  </span>
+                )}
+              </div>
             ) : (
               <button
                 onClick={handleSeparateStems}

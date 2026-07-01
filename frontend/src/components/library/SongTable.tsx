@@ -36,6 +36,25 @@ export function SongTable() {
     setContextMenu(null);
   };
 
+  const handleDownload = async (song: Song) => {
+    setContextMenu(null);
+    try {
+      const res = await fetch(api.downloadUrl(song.id));
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${song.artist} - ${song.title}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download error:', err);
+    }
+  };
+
   const handleSeparateStems = async (song: Song) => {
     await api.separateStems(song.id);
     setContextMenu(null);
@@ -147,13 +166,12 @@ export function SongTable() {
             Load to Deck B
           </button>
           <hr className="border-border my-1" />
-          <a
-            href={api.downloadUrl(contextMenu.song.id)}
-            className="block w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover"
-            onClick={() => setContextMenu(null)}
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover"
+            onClick={() => handleDownload(contextMenu.song)}
           >
             Descargar a PC
-          </a>
+          </button>
           {contextMenu.song.stems_status === 'none' && (
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover"
