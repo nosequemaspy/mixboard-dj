@@ -238,52 +238,22 @@ export class AudioEngine {
     // Increment generation to cancel any in-flight load for this deck
     const gen = ++deck.loadGeneration;
 
-    // Load original
-    console.log(`[AudioEngine] loadSong(${deckId}, ${songId}): fetching original...`);
+    // Load original audio only — return fast so deck is usable immediately
     const origResponse = await fetch(api.streamUrl(songId));
-    if (deck.loadGeneration !== gen) { console.log('[AudioEngine] loadSong: aborted (gen mismatch after fetch)'); return 0; }
+    if (deck.loadGeneration !== gen) return 0;
     if (!origResponse.ok) throw new Error(`Original fetch failed: HTTP ${origResponse.status}`);
     const origData = await origResponse.arrayBuffer();
-    if (deck.loadGeneration !== gen) { console.log('[AudioEngine] loadSong: aborted (gen mismatch after arrayBuffer)'); return 0; }
-    console.log(`[AudioEngine] loadSong: decoding ${origData.byteLength} bytes...`);
+    if (deck.loadGeneration !== gen) return 0;
     deck.bufferOriginal = await this.ctx.decodeAudioData(origData);
     if (deck.loadGeneration !== gen) { deck.bufferOriginal = null; return 0; }
-    console.log(`[AudioEngine] loadSong: original decoded, duration=${deck.bufferOriginal.duration.toFixed(1)}s`);
-
-    // Load instrumental if stems ready (non-blocking for play)
-    if (hasStems) {
-      try {
-        console.log(`[AudioEngine] loadSong: fetching instrumental...`);
-        const instResponse = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
-        if (deck.loadGeneration !== gen) return deck.bufferOriginal.duration;
-        if (!instResponse.ok) throw new Error(`HTTP ${instResponse.status}`);
-        const instData = await instResponse.arrayBuffer();
-        if (deck.loadGeneration !== gen) return deck.bufferOriginal.duration;
-        deck.bufferInstrumental = await this.ctx.decodeAudioData(instData);
-        if (deck.loadGeneration !== gen) { deck.bufferInstrumental = null; return deck.bufferOriginal.duration; }
-        console.log(`[AudioEngine] loadSong: instrumental loaded, ${deck.bufferInstrumental.duration.toFixed(1)}s`);
-
-        // If user already clicked play while we were loading, start the source now
-        if (deck.isPlaying && !deck.sourceInstrumental) {
-          const elapsed = (this.ctx.currentTime - deck.startTime) * deck.playbackRate;
-          const currentOffset = deck.pauseOffset + elapsed;
-          const srcInst = this.ctx.createBufferSource();
-          srcInst.buffer = deck.bufferInstrumental;
-          srcInst.playbackRate.value = deck.playbackRate;
-          srcInst.connect(deck.gainInstrumental);
-          deck.sourceInstrumental = srcInst;
-          srcInst.start(0, currentOffset);
-        }
-      } catch (err) {
-        console.error('[AudioEngine] loadSong: instrumental FAILED:', err);
-        deck.bufferInstrumental = null;
-      }
-    } else {
-      deck.bufferInstrumental = null;
-    }
 
     deck.gainOriginal.gain.value = 1;
     deck.gainInstrumental.gain.value = 0;
+
+    // Load instrumental in background — don't block the deck
+    if (hasStems) {
+      this.loadInstrumentalHot(deckId, songId).catch(() => {});
+    }
 
     return deck.bufferOriginal.duration;
   }
@@ -581,6 +551,27 @@ export class AudioEngine {
 
   isInstrumentalLoaded(deckId: DeckId): boolean {
     return this.decks.get(deckId)!.bufferInstrumental !== null;
+  }
+
+  /** Extract peaks from the loaded AudioBuffer for waveform rendering. */
+  getPeaks(deckId: DeckId, numPoints: number = 800): number[] | null {
+    const deck = this.decks.get(deckId)!;
+    if (!deck.bufferOriginal) return null;
+    const channel = deck.bufferOriginal.getChannelData(0);
+    const step = Math.floor(channel.length / numPoints);
+    if (step === 0) return null;
+    const peaks: number[] = [];
+    for (let i = 0; i < numPoints; i++) {
+      let max = 0;
+      const start = i * step;
+      const end = Math.min(start + step, channel.length);
+      for (let j = start; j < end; j++) {
+        const abs = Math.abs(channel[j]);
+        if (abs > max) max = abs;
+      }
+      peaks.push(max);
+    }
+    return peaks;
   }
 
   isPlaying(deckId: DeckId): boolean {

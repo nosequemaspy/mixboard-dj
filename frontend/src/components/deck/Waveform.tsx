@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
-import { api } from '../../api/http';
+import { getAudioEngine } from '../../hooks/useAudioEngine';
 import type { DeckId, MuteSection, Song } from '../../types';
 
 interface WaveformProps {
@@ -43,7 +43,6 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
       plugins: [regions],
     });
 
-    // 'interaction' fires only on user clicks, not on programmatic seekTo
     ws.on('interaction', (newTime: number) => {
       onSeekRef.current(newTime);
     });
@@ -57,25 +56,37 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
     };
   }, [deckId]);
 
+  // Render waveform from engine's decoded buffer (no extra download)
   useEffect(() => {
-    if (!wsRef.current || !song) return;
+    if (!wsRef.current || !song || !duration || duration === 0) return;
     if (song.id === loadedSongId.current) return;
     loadedSongId.current = song.id;
-    // Empty the waveform first so old data doesn't linger on load failure
     wsRef.current.empty();
-    const url = api.streamUrl(song.id);
-    // Pass pre-computed peaks for instant waveform render (audio loads in background)
-    if (song.waveform_peaks && song.duration_seconds > 0) {
+
+    // Try pre-computed peaks from DB first
+    if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
-        wsRef.current.load(url, [peaks], song.duration_seconds);
-      } catch {
-        wsRef.current.load(url);
-      }
-    } else {
-      wsRef.current.load(url);
+        wsRef.current.load('', [peaks], duration);
+        return;
+      } catch { /* fall through */ }
     }
-  }, [song?.id]);
+
+    // Extract peaks from AudioEngine's already-decoded buffer
+    const engine = getAudioEngine();
+    const peaks = engine.getPeaks(deckId);
+    if (peaks) {
+      wsRef.current.load('', [peaks], duration);
+    }
+  }, [song?.id, duration, deckId]);
+
+  // Reset loadedSongId when song changes (before duration is set)
+  useEffect(() => {
+    if (!song) {
+      loadedSongId.current = null;
+      wsRef.current?.empty();
+    }
+  }, [song]);
 
   useEffect(() => {
     if (!wsRef.current || !duration || duration === 0) return;
