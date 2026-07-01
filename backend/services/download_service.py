@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import subprocess
 from pathlib import Path
 
 import httpx
@@ -82,21 +81,37 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 "-o", str(final_path),
                 "--no-playlist",
                 "--max-filesize", "50m",
+                "--newline",
                 url,
             ]
             logger.info(f"Running yt-dlp: {' '.join(cmd)}")
 
             await update_task_progress(db, task_id, 0.3, "running")
 
-            result = await asyncio.to_thread(
-                subprocess.run, cmd,
-                capture_output=True, text=True, timeout=300,
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
 
-            if result.returncode != 0:
-                stderr = result.stderr or result.stdout or "Unknown error"
-                logger.error(f"yt-dlp failed (code {result.returncode}): {stderr}")
-                raise RuntimeError(f"yt-dlp failed: {stderr[:200]}")
+            last_pct = 0.3
+            async for line in proc.stdout:
+                text = line.decode(errors="replace").strip()
+                # Parse lines like "[download]  45.2% of ~  5.00MiB ..."
+                m = re.search(r'\[download\]\s+([\d.]+)%', text)
+                if m:
+                    dl_pct = float(m.group(1)) / 100.0
+                    # Map download 0-100% to task progress 0.3-0.8
+                    pct = 0.3 + 0.5 * dl_pct
+                    if pct - last_pct >= 0.05:
+                        last_pct = pct
+                        await update_task_progress(db, task_id, min(pct, 0.8), "running")
+
+            returncode = await asyncio.wait_for(proc.wait(), timeout=300)
+
+            if returncode != 0:
+                logger.error(f"yt-dlp failed (code {returncode})")
+                raise RuntimeError(f"yt-dlp failed with exit code {returncode}")
 
             await update_task_progress(db, task_id, 0.85, "running")
 
