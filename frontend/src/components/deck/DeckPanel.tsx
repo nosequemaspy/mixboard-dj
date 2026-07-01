@@ -33,11 +33,19 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
       const song: Song = JSON.parse(songData);
       loadSong(deckId, song);
       const duration = await engine.loadSong(deckId, song.id, song.stems_status === 'ready');
+
+      // If another song was loaded while we were fetching, abort
+      const currentSong = useDeckStore.getState().getDeck(deckId).song;
+      if (currentSong?.id !== song.id) return;
+
       setDuration(deckId, duration);
 
       // Fetch saved edits and apply vocal mute sections
       try {
         const edits = await api.getEdits(song.id);
+        // Check again after fetch
+        if (useDeckStore.getState().getDeck(deckId).song?.id !== song.id) return;
+
         const muteEdits = edits.filter((e: any) => e.edit_type === 'vocal_mute_section');
         const allSections: MuteSection[] = [];
         for (const edit of muteEdits) {

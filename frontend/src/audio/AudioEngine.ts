@@ -23,6 +23,7 @@ interface DeckNodes {
   muteSections: MuteSection[];
   muteSectionsActive: boolean;
   autoMuteState: boolean;
+  loadGeneration: number;
 }
 
 export class AudioEngine {
@@ -160,6 +161,7 @@ export class AudioEngine {
       muteSections: [],
       muteSectionsActive: true,
       autoMuteState: false,
+      loadGeneration: 0,
     };
   }
 
@@ -233,18 +235,27 @@ export class AudioEngine {
     deck.pauseOffset = 0;
     deck.autoMuteState = false;
 
+    // Increment generation to cancel any in-flight load for this deck
+    const gen = ++deck.loadGeneration;
+
     // Load original
     const origResponse = await fetch(api.streamUrl(songId));
+    if (deck.loadGeneration !== gen) return 0; // superseded by newer load
     const origData = await origResponse.arrayBuffer();
+    if (deck.loadGeneration !== gen) return 0;
     deck.bufferOriginal = await this.ctx.decodeAudioData(origData);
+    if (deck.loadGeneration !== gen) { deck.bufferOriginal = null; return 0; }
 
     // Load instrumental if stems ready
     if (hasStems) {
       try {
         const instResponse = await fetch(api.stemByTypeUrl(songId, 'instrumental'));
+        if (deck.loadGeneration !== gen) return deck.bufferOriginal.duration;
         if (!instResponse.ok) throw new Error(`HTTP ${instResponse.status}`);
         const instData = await instResponse.arrayBuffer();
+        if (deck.loadGeneration !== gen) return deck.bufferOriginal.duration;
         deck.bufferInstrumental = await this.ctx.decodeAudioData(instData);
+        if (deck.loadGeneration !== gen) { deck.bufferInstrumental = null; return deck.bufferOriginal.duration; }
         console.log(`[AudioEngine] loadSong: instrumental loaded, ${deck.bufferInstrumental.duration.toFixed(1)}s`);
 
         // If user already clicked play while we were loading, start the source now
