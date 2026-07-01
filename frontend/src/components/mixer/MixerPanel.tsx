@@ -3,19 +3,18 @@ import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { Knob } from '../shared/Knob';
 import { VUMeter } from './VUMeter';
 import { Crossfader } from './Crossfader';
+import { VerticalFader } from './VerticalFader';
 
 export function MixerPanel() {
   const store = useDeckStore();
   const engine = getAudioEngine();
 
-  const handleVolumeA = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleVolumeA = (v: number) => {
     engine.setVolume('A', v);
     store.setVolume('A', v);
   };
 
-  const handleVolumeB = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
+  const handleVolumeB = (v: number) => {
     engine.setVolume('B', v);
     store.setVolume('B', v);
   };
@@ -32,7 +31,7 @@ export function MixerPanel() {
   };
 
   return (
-    <div className="w-[200px] bg-bg-secondary border-x border-border flex flex-col items-center py-3 px-2 gap-3 flex-shrink-0">
+    <div className="w-[200px] bg-bg-secondary border-x border-border hidden lg:flex flex-col items-center py-3 px-2 gap-3 flex-shrink-0">
       <span className="text-[10px] text-text-muted tracking-widest uppercase">Mixer</span>
 
       {/* EQ Section */}
@@ -60,24 +59,22 @@ export function MixerPanel() {
           <span className="text-[9px] text-text-muted">VOL</span>
           <div className="flex gap-1 flex-1 min-h-0">
             <VUMeter deckId="A" />
-            <input
-              type="range"
-              min="0" max="1" step="0.01"
+            <VerticalFader
               value={store.deckA.volume}
               onChange={handleVolumeA}
-              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px', height: '100%' } as React.CSSProperties}
+              color="#3b82f6"
+              label="A"
             />
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
           <span className="text-[9px] text-text-muted">VOL</span>
           <div className="flex gap-1 flex-1 min-h-0">
-            <input
-              type="range"
-              min="0" max="1" step="0.01"
+            <VerticalFader
               value={store.deckB.volume}
               onChange={handleVolumeB}
-              style={{ writingMode: 'vertical-lr', direction: 'rtl', width: '20px', height: '100%' } as React.CSSProperties}
+              color="#f97316"
+              label="B"
             />
             <VUMeter deckId="B" />
           </div>

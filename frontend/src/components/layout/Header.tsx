@@ -31,18 +31,18 @@ export function Header() {
   const isWarning = storage && storage.usage_percent >= 70;
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 bg-bg-secondary border-b border-border">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-bold text-accent tracking-tight">MixBoard</h1>
-        <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">DJ</span>
+    <header className="flex items-center justify-between px-2 md:px-4 py-2 bg-bg-secondary border-b border-border">
+      <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+        <h1 className="text-base md:text-lg font-bold text-accent tracking-tight">MixBoard</h1>
+        <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded hidden sm:inline">DJ</span>
       </div>
-      <div className="flex items-center gap-1">
-        <nav className="flex gap-1">
+      <div className="flex items-center gap-1 overflow-x-auto">
+        <nav className="flex gap-0.5 md:gap-1">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActivePanel(tab.id)}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
                 activePanel === tab.id
                   ? 'bg-accent text-white'
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
@@ -52,13 +52,13 @@ export function Header() {
             </button>
           ))}
         </nav>
-        <div className="w-px h-5 bg-border mx-2" />
+        <div className="w-px h-5 bg-border mx-1 md:mx-2 flex-shrink-0" />
 
         {/* Storage indicator */}
         {storage && (
           <button
             onClick={() => setActivePanel('settings')}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono transition-colors mr-1 ${
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono transition-colors mr-1 flex-shrink-0 ${
               isDanger ? 'bg-danger/15 text-danger hover:bg-danger/25' :
               isWarning ? 'bg-warning/15 text-warning hover:bg-warning/25' :
               'bg-bg-tertiary text-text-muted hover:bg-bg-hover hover:text-text-secondary'
@@ -68,19 +68,19 @@ export function Header() {
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
             </svg>
-            <div className="w-14 bg-bg-primary rounded-full h-1.5 overflow-hidden">
+            <div className="w-14 bg-bg-primary rounded-full h-1.5 overflow-hidden hidden sm:block">
               <div
                 className={`h-full rounded-full ${isDanger ? 'bg-danger' : isWarning ? 'bg-warning' : 'bg-accent'}`}
                 style={{ width: `${Math.min(storage.usage_percent, 100)}%` }}
               />
             </div>
-            <span>{formatBytesShort(storage.total_bytes)}</span>
+            <span className="hidden sm:inline">{formatBytesShort(storage.total_bytes)}</span>
           </button>
         )}
 
         <button
           onClick={() => setActivePanel('settings')}
-          className={`p-1.5 rounded-md transition-colors ${
+          className={`p-1.5 rounded-md transition-colors flex-shrink-0 ${
             activePanel === 'settings'
               ? 'bg-accent text-white'
               : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'

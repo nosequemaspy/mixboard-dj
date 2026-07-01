@@ -99,7 +99,7 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
 
   return (
     <div
-      className={`flex-1 p-3 bg-bg-secondary border-b-2 ${borderColor} flex flex-col`}
+      className={`flex-1 p-2 md:p-3 bg-bg-secondary border-b-2 ${borderColor} flex flex-col`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >

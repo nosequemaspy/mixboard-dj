@@ -39,6 +39,7 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
       barRadius: 1,
       normalize: true,
       interact: true,
+      dragToSeek: true,
       hideScrollbar: true,
       plugins: [regions],
     });

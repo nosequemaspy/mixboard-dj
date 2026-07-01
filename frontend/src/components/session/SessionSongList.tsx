@@ -108,7 +108,7 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -116,6 +116,8 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   isNext: boolean;
   folders: SessionFolder[];
   activeFolder: number | null;
+  isSelected: boolean;
+  onToggleSelect: (itemId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
   const loadSong = useDeckStore(s => s.loadSong);
@@ -156,9 +158,23 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
       ref={setNodeRef}
       style={style}
       className={`flex items-center gap-2 px-3 py-1.5 border-b border-border/30 group transition-colors ${
+        isSelected ? 'bg-accent/15 border-l-2 border-l-accent' :
         item.is_played ? 'opacity-40' : isNext ? 'bg-accent/10 border-l-2 border-l-accent' : 'hover:bg-bg-hover'
       }`}
     >
+      {/* Selection checkbox */}
+      <button
+        onClick={e => { e.stopPropagation(); onToggleSelect(item.id); }}
+        className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+          isSelected ? 'bg-accent border-accent' : 'border-border hover:border-text-muted'
+        }`}
+      >
+        {isSelected && (
+          <svg width="8" height="8" viewBox="0 0 16 16" fill="white">
+            <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+          </svg>
+        )}
+      </button>
       <div {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-primary text-xs">
         :::
       </div>
@@ -175,7 +191,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         <span className="text-sm text-text-primary truncate block leading-tight">{item.song.title}</span>
         <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
-      <span className="text-xs text-text-muted font-mono tabular-nums">{formatDuration(item.song.duration_seconds)}</span>
+      <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {folders.length > 0 && (
           <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
@@ -204,6 +220,7 @@ export function SessionSongList({
   onRenameFolder,
 }: SessionSongListProps) {
   const [search, setSearch] = useState('');
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
 
   const folderItemCounts = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -233,6 +250,51 @@ export function SessionSongList({
   });
 
   const isFiltering = search.length > 0;
+  const hasSelection = selectedItemIds.size > 0;
+
+  const toggleSelect = (itemId: number) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleMoveToTop = async () => {
+    if (!hasSelection) return;
+    const selected = visibleItems.filter(i => selectedItemIds.has(i.id));
+    const unselected = visibleItems.filter(i => !selectedItemIds.has(i.id));
+    const reordered = [...selected, ...unselected];
+    const itemIds = reordered.map(i => i.id);
+
+    if (activeFolder !== null) {
+      await api.reorderFolderItems(sessionId, activeFolder, itemIds, password);
+    } else {
+      await api.reorderSessionItems(sessionId, itemIds, password);
+    }
+    setSelectedItemIds(new Set());
+    onUpdate();
+  };
+
+  const handleMoveToBottom = async () => {
+    if (!hasSelection) return;
+    const selected = visibleItems.filter(i => selectedItemIds.has(i.id));
+    const unselected = visibleItems.filter(i => !selectedItemIds.has(i.id));
+    const reordered = [...unselected, ...selected];
+    const itemIds = reordered.map(i => i.id);
+
+    if (activeFolder !== null) {
+      await api.reorderFolderItems(sessionId, activeFolder, itemIds, password);
+    } else {
+      await api.reorderSessionItems(sessionId, itemIds, password);
+    }
+    setSelectedItemIds(new Set());
+    onUpdate();
+  };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     if (isFiltering) return;
@@ -281,6 +343,33 @@ export function SessionSongList({
           />
         </div>
       </div>
+
+      {/* Floating action bar for selection */}
+      {hasSelection && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 border-b border-accent/30">
+          <span className="text-xs text-accent font-medium">{selectedItemIds.size} selected</span>
+          <div className="flex-1" />
+          <button
+            onClick={handleMoveToTop}
+            className="text-[10px] px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
+          >
+            Move to Top
+          </button>
+          <button
+            onClick={handleMoveToBottom}
+            className="text-[10px] px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
+          >
+            Move to Bottom
+          </button>
+          <button
+            onClick={() => setSelectedItemIds(new Set())}
+            className="text-[10px] px-2 py-1 rounded bg-bg-tertiary text-text-muted hover:text-text-primary transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto">
         <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map(i => i.id)} strategy={verticalListSortingStrategy}>
@@ -294,6 +383,8 @@ export function SessionSongList({
                 isNext={item.id === firstUnplayed?.id}
                 folders={folders}
                 activeFolder={activeFolder}
+                isSelected={selectedItemIds.has(item.id)}
+                onToggleSelect={toggleSelect}
               />
             ))}
           </SortableContext>
