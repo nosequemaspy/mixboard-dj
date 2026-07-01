@@ -31,14 +31,12 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
     if (!songData) return;
     try {
       const song: Song = JSON.parse(songData);
-      console.log(`[DeckPanel] handleDrop(${deckId}): song=${song.id} "${song.title}" stems=${song.stems_status}`);
       loadSong(deckId, song);
       const duration = await engine.loadSong(deckId, song.id, song.stems_status === 'ready');
-      console.log(`[DeckPanel] handleDrop(${deckId}): loadSong returned duration=${duration}`);
 
       // If another song was loaded while we were fetching, abort
       const currentSong = useDeckStore.getState().getDeck(deckId).song;
-      if (currentSong?.id !== song.id) { console.log(`[DeckPanel] handleDrop: aborted, deck song changed`); return; }
+      if (currentSong?.id !== song.id) return;
 
       setDuration(deckId, duration);
 

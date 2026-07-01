@@ -145,6 +145,22 @@ export function AudioEditor() {
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
+  // Sync selectedSong with library store when stems_status changes (e.g. processing finishes
+  // via WebSocket while user was on another tab)
+  useEffect(() => {
+    if (!selectedSong) return;
+    const unsub = useLibraryStore.subscribe((state) => {
+      const updated = state.songs.find(s => s.id === selectedSong.id);
+      if (updated && updated.stems_status !== selectedSong.stems_status) {
+        setSelectedSong(updated);
+        if (updated.stems_status === 'ready' || updated.stems_status === 'error') {
+          setSeparatingStems(false);
+        }
+      }
+    });
+    return unsub;
+  }, [selectedSong?.id, selectedSong?.stems_status]);
+
   const stemsStatus = selectedSong?.stems_status;
   const canMuteVocals = stemsStatus === 'ready';
   const selectedClip = clips.find(c => c.id === selectedClipId) ?? null;

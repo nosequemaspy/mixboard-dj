@@ -49,6 +49,7 @@ export const useDeckStore = create<DeckStore>((set, get) => ({
       song,
       isPlaying: false,
       currentTime: 0,
+      duration: 0,
       cuePoint: 0,
       vocalMuted: false,
       muteSections: [],

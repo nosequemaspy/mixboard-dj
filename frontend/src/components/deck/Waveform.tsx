@@ -60,13 +60,13 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
   useEffect(() => {
     if (!wsRef.current || !song || !duration || duration === 0) return;
     if (song.id === loadedSongId.current) return;
-    loadedSongId.current = song.id;
-    wsRef.current.empty();
 
     // Try pre-computed peaks from DB first
     if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
+        loadedSongId.current = song.id;
+        wsRef.current.empty();
         wsRef.current.load('', [peaks], duration);
         return;
       } catch { /* fall through */ }
@@ -76,8 +76,12 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
     const engine = getAudioEngine();
     const peaks = engine.getPeaks(deckId);
     if (peaks) {
+      loadedSongId.current = song.id;
+      wsRef.current.empty();
       wsRef.current.load('', [peaks], duration);
     }
+    // If peaks not available yet, don't set loadedSongId — effect will
+    // re-run when duration updates after engine finishes decoding
   }, [song?.id, duration, deckId]);
 
   // Reset loadedSongId when song changes (before duration is set)
