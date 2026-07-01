@@ -58,10 +58,13 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
   }, [deckId]);
 
   useEffect(() => {
-    if (!wsRef.current || !song || song.id === loadedSongId.current) return;
+    if (!wsRef.current || !song) return;
+    if (song.id === loadedSongId.current) return;
     loadedSongId.current = song.id;
+    // Empty the waveform first so old data doesn't linger on load failure
+    wsRef.current.empty();
     wsRef.current.load(api.streamUrl(song.id));
-  }, [song]);
+  }, [song?.id]);
 
   useEffect(() => {
     if (!wsRef.current || !duration || duration === 0) return;

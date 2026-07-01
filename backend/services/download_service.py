@@ -73,12 +73,14 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             await update_task_progress(db, task_id, 0.2, "running")
 
             # Download audio using yt-dlp
+            # Use %(ext)s so yt-dlp handles extensions correctly during extraction
+            output_template = str(SONGS_DIR / f"{safe_name}.%(ext)s")
             cmd = [
                 "yt-dlp",
                 "--extract-audio",
                 "--audio-format", "mp3",
                 "--audio-quality", AUDIO_QUALITY,
-                "-o", str(final_path),
+                "-o", output_template,
                 "--no-playlist",
                 "--max-filesize", "50m",
                 "--newline",
@@ -101,11 +103,13 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 m = re.search(r'\[download\]\s+([\d.]+)%', text)
                 if m:
                     dl_pct = float(m.group(1)) / 100.0
-                    # Map download 0-100% to task progress 0.3-0.8
-                    pct = 0.3 + 0.5 * dl_pct
+                    # Map download 0-100% to task progress 0.3-0.75
+                    pct = 0.3 + 0.45 * dl_pct
                     if pct - last_pct >= 0.05:
                         last_pct = pct
-                        await update_task_progress(db, task_id, min(pct, 0.8), "running")
+                        await update_task_progress(db, task_id, min(pct, 0.75), "running")
+                elif '[ExtractAudio]' in text:
+                    await update_task_progress(db, task_id, 0.8, "running")
 
             returncode = await asyncio.wait_for(proc.wait(), timeout=300)
 
@@ -119,6 +123,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 raise FileNotFoundError(f"Downloaded file is empty or missing: {safe_name}")
 
             # Fast analysis with mutagen (duration, basic metadata)
+            await update_task_progress(db, task_id, 0.9, "running")
             analysis = await asyncio.to_thread(analyze_audio_fast, str(final_path))
             duration = analysis.get("duration_seconds", 0)
             if duration > MAX_DOWNLOAD_DURATION:
