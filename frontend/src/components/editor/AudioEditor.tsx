@@ -3,9 +3,11 @@ import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
+import { useDeckStore } from '../../store/deckStore';
+import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
-import type { Song, EditedSong } from '../../types';
+import type { Song, EditedSong, MuteSection } from '../../types';
 
 interface Clip {
   id: string;
@@ -667,6 +669,31 @@ export function AudioEditor() {
       }
       loadEdits(selectedSong.id);
       resetClips();
+
+      // Sync mute sections to decks if this song is loaded there
+      if (muteClips.length > 0) {
+        const songId = selectedSong.id;
+        const { deckA, deckB, setMuteSections } = useDeckStore.getState();
+        const engine = getAudioEngine();
+
+        // Fetch ALL mute edits for this song to get complete sections
+        try {
+          const allEdits = await api.getEdits(songId);
+          const allSections: MuteSection[] = [];
+          for (const edit of allEdits.filter((e: any) => e.edit_type === 'vocal_mute_section')) {
+            try {
+              const meta = typeof edit.edit_metadata === 'string' ? JSON.parse(edit.edit_metadata) : edit.edit_metadata;
+              if (meta?.sections) allSections.push(...meta.sections);
+            } catch {}
+          }
+          for (const [deckId, deck] of [['A', deckA], ['B', deckB]] as const) {
+            if (deck.song?.id === songId) {
+              setMuteSections(deckId, allSections);
+              engine.setMuteSections(deckId, allSections);
+            }
+          }
+        } catch {}
+      }
     } catch (e: any) {
       alert(e.message || 'Error al guardar');
     } finally { setSaving(false); }
