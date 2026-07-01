@@ -69,12 +69,12 @@ export function VocalMuteToggle({ deckId }: VocalMuteToggleProps) {
       }`}
       title={
         hasError
-          ? 'Stem separation failed — click to retry'
+          ? 'Error al separar voz — click para reintentar'
           : deck.vocalMuted
             ? isProcessing
-              ? 'Separating stems... will apply automatically'
-              : 'Click to unmute vocals'
-            : 'Click to mute vocals'
+              ? 'Separando voz... se aplicará automáticamente'
+              : 'Click para volver a escuchar la voz'
+            : 'Click para quitar la voz'
       }
     >
       {deck.vocalMuted

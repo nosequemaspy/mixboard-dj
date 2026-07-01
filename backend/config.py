@@ -20,8 +20,8 @@ for d in [SONGS_DIR, STEMS_DIR, EDITS_DIR, DB_DIR]:
 SUPPORTED_FORMATS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma"}
 AUDIO_QUALITY = os.environ.get("AUDIO_QUALITY", "192")  # 192kbps: ~5MB per song, 350 songs ≈ 1.7GB
 
-# Cobalt API (external service for YouTube audio extraction)
-COBALT_API_URL = os.environ.get("COBALT_API_URL", "https://api.cobalt.tools")
+# Replicate API (AI vocal separation with Demucs)
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
 
 # Storage limits
 STORAGE_LIMIT_GB = int(os.environ.get("STORAGE_LIMIT_GB", "3"))
