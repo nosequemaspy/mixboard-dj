@@ -37,11 +37,13 @@ def on_startup():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await ws_manager.connect(websocket)
+    connected = await ws_manager.connect(websocket)
+    if not connected:
+        return
     try:
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, Exception):
         ws_manager.disconnect(websocket)
 
 

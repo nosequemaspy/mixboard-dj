@@ -121,6 +121,8 @@ export function AudioEditor() {
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [separatingStems, setSeparatingStems] = useState(false);
   const [instStatus, setInstStatus] = useState<'none' | 'loading' | 'ready' | 'playing' | 'error'>('none');
+  const stemPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stemTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const waveContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
@@ -587,6 +589,9 @@ export function AudioEditor() {
         audioCtxRef.current.close();
         audioCtxRef.current = null;
       }
+      // Clean up stem polling interval
+      if (stemPollRef.current) { clearInterval(stemPollRef.current); stemPollRef.current = null; }
+      if (stemTimeoutRef.current) { clearTimeout(stemTimeoutRef.current); stemTimeoutRef.current = null; }
     };
   }, [stopInst]);
 
@@ -609,6 +614,9 @@ export function AudioEditor() {
   const handleSeparateStems = async () => {
     if (!selectedSong || separatingStems) return;
     setSeparatingStems(true);
+    // Clear any previous poll
+    if (stemPollRef.current) clearInterval(stemPollRef.current);
+    if (stemTimeoutRef.current) clearTimeout(stemTimeoutRef.current);
     try {
       await api.separateStems(selectedSong.id);
       const poll = setInterval(async () => {
@@ -616,13 +624,22 @@ export function AudioEditor() {
           await useLibraryStore.getState().fetchSongs();
           const updated = useLibraryStore.getState().songs.find(s => s.id === selectedSong.id);
           if (updated && updated.stems_status === 'ready') {
-            setSelectedSong(updated); setSeparatingStems(false); clearInterval(poll);
+            setSelectedSong(updated); setSeparatingStems(false);
+            clearInterval(poll); stemPollRef.current = null;
+            if (stemTimeoutRef.current) { clearTimeout(stemTimeoutRef.current); stemTimeoutRef.current = null; }
           } else if (updated && updated.stems_status === 'error') {
-            setSeparatingStems(false); clearInterval(poll);
+            setSeparatingStems(false);
+            clearInterval(poll); stemPollRef.current = null;
+            if (stemTimeoutRef.current) { clearTimeout(stemTimeoutRef.current); stemTimeoutRef.current = null; }
           }
         } catch {}
       }, 2000);
-      setTimeout(() => { clearInterval(poll); setSeparatingStems(false); }, 60000);
+      stemPollRef.current = poll;
+      stemTimeoutRef.current = setTimeout(() => {
+        if (stemPollRef.current) { clearInterval(stemPollRef.current); stemPollRef.current = null; }
+        setSeparatingStems(false);
+        stemTimeoutRef.current = null;
+      }, 60000);
     } catch { setSeparatingStems(false); }
   };
 

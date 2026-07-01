@@ -21,6 +21,9 @@ export function useWebSocket() {
       if (data.status === 'completed') {
         fetchSongs();
       }
+      // Auto-cleanup completed/failed tasks after 10 seconds to prevent memory leak
+      const removeTask = useMixerStore.getState().removeTask;
+      setTimeout(() => removeTask(data.task_id), 10000);
     });
 
     const unsub3 = wsClient.on('song_added', () => {

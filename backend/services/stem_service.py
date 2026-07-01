@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from config import STEMS_DIR, SONGS_DIR
+from database import SessionLocal
 from models.song import Song
 from models.stem import Stem
 from tasks.background import create_task, update_task_progress, complete_task
@@ -26,12 +27,17 @@ async def separate_stems(db: Session, song_id: int) -> str:
     song.stems_status = "processing"
     db.commit()
 
+    # Capture file path before request session closes
+    song_file_path = song.file_path
+
     async def _do_separation():
+        # Create own DB session — the request-scoped session is closed by now
+        bg_db = SessionLocal()
         output_dir = STEMS_DIR / str(song_id)
         try:
-            await update_task_progress(db, task_id, 0.1, "running")
+            await update_task_progress(bg_db, task_id, 0.1, "running")
 
-            song_file = Path(song.file_path)
+            song_file = Path(song_file_path)
             if not song_file.is_absolute():
                 song_file = SONGS_DIR.parent.parent / song_file
 
@@ -42,18 +48,18 @@ async def separate_stems(db: Session, song_id: int) -> str:
             instrumental_path = output_dir / "instrumental.mp3"
 
             try:
-                await _separate_with_hf(db, task_id, str(song_file), instrumental_path)
+                await _separate_with_hf(bg_db, task_id, str(song_file), instrumental_path)
             except Exception as e:
                 logger.warning(f"HF Space failed ({e}), falling back to FFmpeg")
-                await _separate_with_ffmpeg(db, task_id, str(song_file), instrumental_path)
+                await _separate_with_ffmpeg(bg_db, task_id, str(song_file), instrumental_path)
 
-            await update_task_progress(db, task_id, 0.9, "running")
+            await update_task_progress(bg_db, task_id, 0.9, "running")
 
             if not instrumental_path.exists() or instrumental_path.stat().st_size == 0:
                 raise FileNotFoundError("Vocal separation produced no output")
 
             # Remove old stems for this song
-            db.query(Stem).filter(Stem.song_id == song_id).delete()
+            bg_db.query(Stem).filter(Stem.song_id == song_id).delete()
 
             stem = Stem(
                 song_id=song_id,
@@ -61,28 +67,30 @@ async def separate_stems(db: Session, song_id: int) -> str:
                 file_path=str(instrumental_path.relative_to(STEMS_DIR.parent.parent)),
                 model_used="demucs-hf",
             )
-            db.add(stem)
+            bg_db.add(stem)
 
-            song_ref = db.query(Song).filter(Song.id == song_id).first()
+            song_ref = bg_db.query(Song).filter(Song.id == song_id).first()
             if song_ref:
                 song_ref.stems_status = "ready"
-                db.commit()
+                bg_db.commit()
             else:
-                db.commit()
+                bg_db.commit()
 
-            await complete_task(db, task_id)
+            await complete_task(bg_db, task_id)
             await ws_manager.broadcast("stems_ready", {"song_id": song_id})
 
         except Exception as e:
             logger.error(f"Vocal separation failed: {type(e).__name__}: {e}")
-            song_ref = db.query(Song).filter(Song.id == song_id).first()
+            song_ref = bg_db.query(Song).filter(Song.id == song_id).first()
             if song_ref:
                 song_ref.stems_status = "error"
                 try:
-                    db.commit()
+                    bg_db.commit()
                 except Exception:
-                    db.rollback()
-            await complete_task(db, task_id, error=str(e))
+                    bg_db.rollback()
+            await complete_task(bg_db, task_id, error=str(e))
+        finally:
+            bg_db.close()
 
     asyncio.create_task(_do_separation())
     return task_id

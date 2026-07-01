@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from config import SONGS_DIR, MAX_DOWNLOAD_DURATION
+from database import SessionLocal
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
 from services.analysis import analyze_audio_fast, analyze_audio_full
@@ -58,9 +59,11 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
     task_id = await create_task(db, "download")
 
     async def _do_download():
+        # Create own DB session — the request-scoped session is closed by now
+        bg_db = SessionLocal()
         final_path = None
         try:
-            await update_task_progress(db, task_id, 0.1, "running")
+            await update_task_progress(bg_db, task_id, 0.1, "running")
 
             info = await get_video_info(url)
 
@@ -69,7 +72,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
 
             safe_name = sanitize_filename(f"{final_artist} - {final_title}" if final_artist else final_title)
 
-            await update_task_progress(db, task_id, 0.2, "running")
+            await update_task_progress(bg_db, task_id, 0.2, "running")
 
             # Download audio in native format (m4a/webm) — no mp3 conversion needed
             # This skips the slow ffmpeg re-encoding step
@@ -86,7 +89,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             ]
             logger.info(f"Running yt-dlp: {' '.join(cmd)}")
 
-            await update_task_progress(db, task_id, 0.3, "running")
+            await update_task_progress(bg_db, task_id, 0.3, "running")
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -105,7 +108,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                     pct = 0.3 + 0.55 * dl_pct
                     if pct - last_pct >= 0.05:
                         last_pct = pct
-                        await update_task_progress(db, task_id, min(pct, 0.85), "running")
+                        await update_task_progress(bg_db, task_id, min(pct, 0.85), "running")
 
             returncode = await asyncio.wait_for(proc.wait(), timeout=300)
 
@@ -113,7 +116,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 logger.error(f"yt-dlp failed (code {returncode})")
                 raise RuntimeError(f"yt-dlp failed with exit code {returncode}")
 
-            await update_task_progress(db, task_id, 0.85, "running")
+            await update_task_progress(bg_db, task_id, 0.85, "running")
 
             # Find the downloaded file (extension depends on YouTube format)
             candidates = sorted(
@@ -130,7 +133,7 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 raise FileNotFoundError(f"Downloaded file is empty: {safe_name}")
 
             # Fast analysis with mutagen (duration, basic metadata)
-            await update_task_progress(db, task_id, 0.9, "running")
+            await update_task_progress(bg_db, task_id, 0.9, "running")
             analysis = await asyncio.to_thread(analyze_audio_fast, str(final_path))
             duration = analysis.get("duration_seconds", 0)
             if duration > MAX_DOWNLOAD_DURATION:
@@ -153,39 +156,44 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 source_type="youtube",
                 waveform_peaks=analysis["waveform_peaks"],
             )
-            db.add(song)
-            db.commit()
-            db.refresh(song)
+            bg_db.add(song)
+            bg_db.commit()
+            bg_db.refresh(song)
 
-            await complete_task(db, task_id)
+            await complete_task(bg_db, task_id)
             await ws_manager.broadcast("song_added", {"song_id": song.id})
 
             # Full analysis in background (BPM, key, waveform) - non-blocking
             song_id = song.id
             file_path_str = str(final_path)
-            asyncio.create_task(_background_analyze(db, song_id, file_path_str))
+            asyncio.create_task(_background_analyze(song_id, file_path_str))
 
         except Exception as e:
             logger.error(f"Download failed: {type(e).__name__}: {e}")
             # Cleanup partial file on failure
             if final_path and final_path.exists():
                 final_path.unlink(missing_ok=True)
-            await complete_task(db, task_id, error=str(e))
+            await complete_task(bg_db, task_id, error=str(e))
+        finally:
+            bg_db.close()
 
     asyncio.create_task(_do_download())
     return task_id
 
 
-async def _background_analyze(db: Session, song_id: int, file_path: str):
+async def _background_analyze(song_id: int, file_path: str):
     """Run full librosa analysis in background and update the song."""
+    bg_db = SessionLocal()
     try:
         analysis = await asyncio.to_thread(analyze_audio_full, file_path)
-        song = db.query(Song).filter(Song.id == song_id).first()
+        song = bg_db.query(Song).filter(Song.id == song_id).first()
         if song:
             song.bpm = analysis["bpm"]
             song.key = analysis["key"]
             song.waveform_peaks = analysis["waveform_peaks"]
-            db.commit()
+            bg_db.commit()
             await ws_manager.broadcast("song_updated", {"song_id": song_id})
     except Exception:
         pass  # Analysis failure is non-critical
+    finally:
+        bg_db.close()
