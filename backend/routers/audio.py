@@ -37,6 +37,10 @@ def range_file_response(file_path: Path, request: Request):
         content_type = "audio/ogg"
     elif ext in (".m4a", ".aac"):
         content_type = "audio/mp4"
+    elif ext == ".webm":
+        content_type = "audio/webm"
+    elif ext == ".opus":
+        content_type = "audio/ogg"
 
     if range_header:
         range_val = range_header.strip().split("=")[-1]

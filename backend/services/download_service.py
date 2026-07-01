@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from config import SONGS_DIR, AUDIO_QUALITY, MAX_DOWNLOAD_DURATION
+from config import SONGS_DIR, MAX_DOWNLOAD_DURATION
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
 from services.analysis import analyze_audio_fast, analyze_audio_full
@@ -68,22 +68,20 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
             final_artist = artist or info["artist"]
 
             safe_name = sanitize_filename(f"{final_artist} - {final_title}" if final_artist else final_title)
-            final_path = SONGS_DIR / f"{safe_name}.mp3"
 
             await update_task_progress(db, task_id, 0.2, "running")
 
-            # Download audio using yt-dlp
-            # Use %(ext)s so yt-dlp handles extensions correctly during extraction
+            # Download audio in native format (m4a/webm) — no mp3 conversion needed
+            # This skips the slow ffmpeg re-encoding step
             output_template = str(SONGS_DIR / f"{safe_name}.%(ext)s")
             cmd = [
                 "yt-dlp",
-                "--extract-audio",
-                "--audio-format", "mp3",
-                "--audio-quality", AUDIO_QUALITY,
+                "--format", "bestaudio",
                 "-o", output_template,
                 "--no-playlist",
                 "--max-filesize", "50m",
                 "--newline",
+                "--concurrent-fragments", "4",
                 url,
             ]
             logger.info(f"Running yt-dlp: {' '.join(cmd)}")
@@ -103,13 +101,11 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 m = re.search(r'\[download\]\s+([\d.]+)%', text)
                 if m:
                     dl_pct = float(m.group(1)) / 100.0
-                    # Map download 0-100% to task progress 0.3-0.75
-                    pct = 0.3 + 0.45 * dl_pct
+                    # Map download 0-100% to task progress 0.3-0.85
+                    pct = 0.3 + 0.55 * dl_pct
                     if pct - last_pct >= 0.05:
                         last_pct = pct
-                        await update_task_progress(db, task_id, min(pct, 0.75), "running")
-                elif '[ExtractAudio]' in text:
-                    await update_task_progress(db, task_id, 0.8, "running")
+                        await update_task_progress(db, task_id, min(pct, 0.85), "running")
 
             returncode = await asyncio.wait_for(proc.wait(), timeout=300)
 
@@ -119,8 +115,19 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
 
             await update_task_progress(db, task_id, 0.85, "running")
 
-            if not final_path.exists() or final_path.stat().st_size == 0:
-                raise FileNotFoundError(f"Downloaded file is empty or missing: {safe_name}")
+            # Find the downloaded file (extension depends on YouTube format)
+            candidates = sorted(
+                SONGS_DIR.glob(f"{safe_name}.*"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if not candidates:
+                raise FileNotFoundError(f"Downloaded file not found: {safe_name}")
+            final_path = candidates[0]
+            logger.info(f"Downloaded: {final_path.name} ({final_path.stat().st_size // 1024}KB)")
+
+            if final_path.stat().st_size == 0:
+                raise FileNotFoundError(f"Downloaded file is empty: {safe_name}")
 
             # Fast analysis with mutagen (duration, basic metadata)
             await update_task_progress(db, task_id, 0.9, "running")
