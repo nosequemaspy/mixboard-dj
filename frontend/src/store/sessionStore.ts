@@ -14,9 +14,11 @@ interface SessionStore {
   setPassword: (sessionId: number, password: string) => void;
   getPassword: (sessionId: number) => string | undefined;
   clearPassword: (sessionId: number) => void;
+  restoreLastSession: () => void;
 }
 
 const PASSWORDS_KEY = 'mixboard_session_passwords';
+const ACTIVE_SESSION_KEY = 'mixboard_active_session_id';
 
 function loadPasswords(): Record<number, string> {
   try {
@@ -29,6 +31,23 @@ function loadPasswords(): Record<number, string> {
 
 function savePasswords(passwords: Record<number, string>) {
   localStorage.setItem(PASSWORDS_KEY, JSON.stringify(passwords));
+}
+
+function loadActiveSessionId(): number | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY);
+    return raw ? Number(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveSessionId(id: number | null) {
+  if (id !== null) {
+    localStorage.setItem(ACTIVE_SESSION_KEY, String(id));
+  } else {
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
+  }
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
@@ -49,19 +68,37 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   setActiveSession: (id) => {
-    set({ activeSessionId: id, activeSession: null });
-    if (id !== null) {
-      get().fetchActiveSession(id);
+    saveActiveSessionId(id);
+    if (id === null) {
+      set({ activeSessionId: null, activeSession: null });
+      return;
     }
+    set({ activeSessionId: id });
+    get().fetchActiveSession(id);
   },
 
   fetchActiveSession: async (id) => {
     try {
       const pw = get().sessionPasswords[id];
       const session = await api.getSession(id, pw);
-      set({ activeSession: session });
+      // Only update if this is still the active session
+      if (get().activeSessionId === id) {
+        set({ activeSession: session });
+      }
     } catch {
       // ignore
+    }
+  },
+
+  restoreLastSession: () => {
+    const savedId = loadActiveSessionId();
+    if (savedId !== null) {
+      const state = get();
+      // Only restore if no session is already active
+      if (state.activeSessionId === null) {
+        set({ activeSessionId: savedId });
+        state.fetchActiveSession(savedId);
+      }
     }
   },
 

@@ -11,6 +11,7 @@ export function SongTable() {
   const setDuration = useDeckStore(s => s.setDuration);
   const engine = getAudioEngine();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; song: Song } | null>(null);
+  const [expandedSongId, setExpandedSongId] = useState<number | null>(null);
 
   // Tag picker state
   const [tagPickerSongId, setTagPickerSongId] = useState<number | null>(null);
@@ -61,6 +62,7 @@ export function SongTable() {
     const duration = await engine.loadSong(deckId, song.id, song.stems_status === 'ready');
     setDuration(deckId, duration);
     setContextMenu(null);
+    setExpandedSongId(null);
   };
 
   const handleDelete = async (song: Song) => {
@@ -110,6 +112,11 @@ export function SongTable() {
     setEditingSongId(null);
   };
 
+  const handleRowClick = (song: Song) => {
+    // Toggle expanded row to show deck load buttons
+    setExpandedSongId(expandedSongId === song.id ? null : song.id);
+  };
+
   const formatDuration = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
@@ -153,12 +160,37 @@ export function SongTable() {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, song });
               }}
-              className="border-b border-border/30 hover:bg-bg-hover cursor-grab active:cursor-grabbing transition-colors"
+              onClick={() => handleRowClick(song)}
+              className={`border-b border-border/30 hover:bg-bg-hover cursor-pointer transition-colors ${
+                expandedSongId === song.id ? 'bg-bg-hover' : ''
+              }`}
             >
-              <td className="py-1.5 px-3 text-text-primary truncate max-w-[200px]">{song.title}</td>
+              <td className="py-1.5 px-3 text-text-primary truncate max-w-[200px]">
+                <div className="flex items-center gap-2">
+                  <span className="truncate">{song.title}</span>
+                  {/* Inline deck buttons - always visible when expanded, hover on desktop */}
+                  <div className={`flex gap-1 flex-shrink-0 ${
+                    expandedSongId === song.id ? 'flex' : 'hidden sm:group-hover:flex'
+                  }`}>
+                    <button
+                      onClick={e => { e.stopPropagation(); loadToDeck(song, 'A'); }}
+                      className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-deck-a/20 text-deck-a hover:bg-deck-a/40 transition-colors"
+                    >
+                      A
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); loadToDeck(song, 'B'); }}
+                      className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-deck-b/20 text-deck-b hover:bg-deck-b/40 transition-colors"
+                    >
+                      B
+                    </button>
+                  </div>
+                </div>
+              </td>
               <td
                 className="py-1.5 px-3 text-text-secondary truncate max-w-[150px]"
-                onDoubleClick={() => {
+                onDoubleClick={e => {
+                  e.stopPropagation();
                   setEditingSongId(song.id);
                   setEditArtist(song.artist);
                 }}

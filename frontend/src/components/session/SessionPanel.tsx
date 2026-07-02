@@ -13,7 +13,7 @@ export function SessionPanel() {
   const {
     sessions, activeSessionId, activeSession,
     fetchSessions, setActiveSession, fetchActiveSession,
-    getPassword, setPassword,
+    getPassword, setPassword, restoreLastSession,
   } = useSessionStore();
   const songs = useLibraryStore(s => s.songs);
   const fetchSongs = useLibraryStore(s => s.fetchSongs);
@@ -28,6 +28,7 @@ export function SessionPanel() {
 
   useEffect(() => {
     fetchSessions();
+    restoreLastSession();
     // Ensure songs are loaded for Add Song modal
     if (songs.length === 0) {
       fetchSongs();
