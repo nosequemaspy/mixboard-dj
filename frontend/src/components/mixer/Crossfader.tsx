@@ -8,6 +8,8 @@ interface CrossfaderProps {
 export function Crossfader({ value, onChange }: CrossfaderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const valueToPercent = (v: number) => ((v + 1) / 2) * 100;
 
@@ -16,37 +18,42 @@ export function Crossfader({ value, onChange }: CrossfaderProps) {
     if (!track) return 0;
     const rect = track.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    // Snap to center when close
     const raw = ratio * 2 - 1;
     return Math.abs(raw) < 0.03 ? 0 : Math.round(raw * 100) / 100;
   }, []);
 
+  // Use document-level listeners for reliable drag tracking
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (e: PointerEvent) => {
+      e.preventDefault();
+      onChangeRef.current(positionToValue(e.clientX));
+    };
+    const handleUp = () => {
+      setDragging(false);
+    };
+    const preventSelect = (e: Event) => e.preventDefault();
+
+    document.addEventListener('pointermove', handleMove);
+    document.addEventListener('pointerup', handleUp);
+    document.addEventListener('pointercancel', handleUp);
+    document.addEventListener('selectstart', preventSelect);
+
+    return () => {
+      document.removeEventListener('pointermove', handleMove);
+      document.removeEventListener('pointerup', handleUp);
+      document.removeEventListener('pointercancel', handleUp);
+      document.removeEventListener('selectstart', preventSelect);
+    };
+  }, [dragging, positionToValue]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Capture on the track element itself, not e.target (which could be a child)
-    trackRef.current?.setPointerCapture(e.pointerId);
     setDragging(true);
-    onChange(positionToValue(e.clientX));
-  }, [onChange, positionToValue]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging) return;
-    onChange(positionToValue(e.clientX));
-  }, [dragging, onChange, positionToValue]);
-
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    setDragging(false);
-    trackRef.current?.releasePointerCapture(e.pointerId);
-  }, []);
-
-  // Prevent text selection while dragging
-  useEffect(() => {
-    if (!dragging) return;
-    const prevent = (e: Event) => e.preventDefault();
-    document.addEventListener('selectstart', prevent);
-    return () => document.removeEventListener('selectstart', prevent);
-  }, [dragging]);
+    onChangeRef.current(positionToValue(e.clientX));
+  }, [positionToValue]);
 
   const percent = valueToPercent(value);
 
@@ -54,9 +61,6 @@ export function Crossfader({ value, onChange }: CrossfaderProps) {
     <div
       ref={trackRef}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
       className="relative h-10 cursor-pointer select-none"
       style={{ touchAction: 'none' }}
     >

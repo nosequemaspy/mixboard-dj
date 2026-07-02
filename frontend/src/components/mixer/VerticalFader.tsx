@@ -10,6 +10,8 @@ interface VerticalFaderProps {
 export function VerticalFader({ value, onChange, color = '#6366f1', label }: VerticalFaderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const positionToValue = useCallback((clientY: number) => {
     const track = trackRef.current;
@@ -19,31 +21,38 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
     return Math.round(ratio * 100) / 100;
   }, []);
 
+  // Use document-level listeners for reliable drag tracking
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (e: PointerEvent) => {
+      e.preventDefault();
+      onChangeRef.current(positionToValue(e.clientY));
+    };
+    const handleUp = () => {
+      setDragging(false);
+    };
+    const preventSelect = (e: Event) => e.preventDefault();
+
+    document.addEventListener('pointermove', handleMove);
+    document.addEventListener('pointerup', handleUp);
+    document.addEventListener('pointercancel', handleUp);
+    document.addEventListener('selectstart', preventSelect);
+
+    return () => {
+      document.removeEventListener('pointermove', handleMove);
+      document.removeEventListener('pointerup', handleUp);
+      document.removeEventListener('pointercancel', handleUp);
+      document.removeEventListener('selectstart', preventSelect);
+    };
+  }, [dragging, positionToValue]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Capture on the track element itself, not e.target (which could be a child)
-    trackRef.current?.setPointerCapture(e.pointerId);
     setDragging(true);
-    onChange(positionToValue(e.clientY));
-  }, [onChange, positionToValue]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging) return;
-    onChange(positionToValue(e.clientY));
-  }, [dragging, onChange, positionToValue]);
-
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    setDragging(false);
-    trackRef.current?.releasePointerCapture(e.pointerId);
-  }, []);
-
-  useEffect(() => {
-    if (!dragging) return;
-    const prevent = (e: Event) => e.preventDefault();
-    document.addEventListener('selectstart', prevent);
-    return () => document.removeEventListener('selectstart', prevent);
-  }, [dragging]);
+    onChangeRef.current(positionToValue(e.clientY));
+  }, [positionToValue]);
 
   const percent = value * 100;
 
@@ -51,20 +60,14 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
     <div
       ref={trackRef}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
       className="relative w-8 cursor-pointer select-none"
       style={{ touchAction: 'none', height: '100%' }}
     >
-      {/* Wider invisible hit area */}
-      <div className="absolute inset-0" />
-
       {/* Track background */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-2 rounded-full overflow-hidden bg-bg-tertiary">
         {/* Fill */}
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-full transition-[opacity] duration-75"
+          className="absolute bottom-0 left-0 right-0 rounded-full"
           style={{
             height: `${percent}%`,
             backgroundColor: color,
@@ -96,7 +99,7 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
         </div>
       </div>
 
-      {/* Label */}
+      {/* Value label */}
       {label && (
         <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-text-muted font-mono tabular-nums whitespace-nowrap">
           {Math.round(value * 100)}
