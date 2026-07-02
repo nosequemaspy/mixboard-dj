@@ -96,36 +96,47 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
 
                 await update_task_progress(bg_db, task_id, 0.3, "running")
 
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                )
+                # Try up to 2 attempts (retry once on failure)
+                returncode = -1
+                for attempt in range(2):
+                    if attempt > 0:
+                        logger.info(f"Retrying yt-dlp (attempt {attempt + 1})...")
+                        await asyncio.sleep(3)
+                        await update_task_progress(bg_db, task_id, 0.3, "running")
 
-                last_pct = 0.3
-                output_lines = []
-                async for line in proc.stdout:
-                    text = line.decode(errors="replace").strip()
-                    if text:
-                        output_lines.append(text)
-                    # Parse lines like "[download]  45.2% of ~  5.00MiB ..."
-                    m = re.search(r'\[download\]\s+([\d.]+)%', text)
-                    if m:
-                        dl_pct = float(m.group(1)) / 100.0
-                        # Map download 0-100% to task progress 0.3-0.85
-                        pct = 0.3 + 0.55 * dl_pct
-                        if pct - last_pct >= 0.05:
-                            last_pct = pct
-                            await update_task_progress(bg_db, task_id, min(pct, 0.85), "running")
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                    )
 
-                returncode = await asyncio.wait_for(proc.wait(), timeout=300)
-                proc = None  # process finished normally
+                    last_pct = 0.3
+                    output_lines = []
+                    async for line in proc.stdout:
+                        text = line.decode(errors="replace").strip()
+                        if text:
+                            output_lines.append(text)
+                        # Parse lines like "[download]  45.2% of ~  5.00MiB ..."
+                        m = re.search(r'\[download\]\s+([\d.]+)%', text)
+                        if m:
+                            dl_pct = float(m.group(1)) / 100.0
+                            # Map download 0-100% to task progress 0.3-0.85
+                            pct = 0.3 + 0.55 * dl_pct
+                            if pct - last_pct >= 0.05:
+                                last_pct = pct
+                                await update_task_progress(bg_db, task_id, min(pct, 0.85), "running")
+
+                    returncode = await asyncio.wait_for(proc.wait(), timeout=300)
+                    proc = None  # process finished normally
+
+                    if returncode == 0:
+                        break
+                    # Log the error output
+                    tail = "\n".join(output_lines[-10:])
+                    logger.error(f"yt-dlp attempt {attempt + 1} failed (code {returncode}):\n{tail}")
 
                 if returncode != 0:
-                    # Log the last lines of output so we can debug
-                    tail = "\n".join(output_lines[-10:])
-                    logger.error(f"yt-dlp failed (code {returncode}):\n{tail}")
-                    raise RuntimeError(f"yt-dlp failed with exit code {returncode}")
+                    raise RuntimeError("Download failed — YouTube may be temporarily blocking requests. Try again in a moment.")
 
                 await update_task_progress(bg_db, task_id, 0.85, "running")
 

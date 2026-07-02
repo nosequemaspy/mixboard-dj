@@ -16,9 +16,11 @@ export function DownloadPanel() {
   const updateTask = useMixerStore(s => s.updateTask);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeTasks = Array.from(tasks.values()).filter(
+  const allTasks = Array.from(tasks.values());
+  const activeTasks = allTasks.filter(
     t => t.status === 'running' || t.status === 'pending'
   );
+  const failedTasks = allTasks.filter(t => t.status === 'failed');
 
   const handlePreview = async () => {
     if (!url.trim()) return;
@@ -146,7 +148,7 @@ export function DownloadPanel() {
                 <div key={task.task_id} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-primary font-medium truncate mr-2">
-                      {task.title || 'Unknown'}
+                      {task.title || 'Downloading'}
                     </span>
                     <span className="text-xs text-text-muted flex-shrink-0">
                       {task.status === 'running' ? `Downloading... ${Math.round(task.progress * 100)}%` : 'In queue...'}
@@ -156,6 +158,18 @@ export function DownloadPanel() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Failed tasks */}
+        {failedTasks.length > 0 && (
+          <div className="bg-danger/10 rounded-xl border border-danger/30 p-5">
+            <h3 className="text-sm font-semibold text-danger mb-2">Download Failed</h3>
+            {failedTasks.map(task => (
+              <p key={task.task_id} className="text-xs text-danger/80">
+                {task.title ? `${task.title}: ` : ''}Download failed. Try again in a moment.
+              </p>
+            ))}
           </div>
         )}
 

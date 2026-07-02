@@ -56,12 +56,15 @@ export function useWebSocket() {
     });
 
     const unsub2 = wsClient.on('task_complete', (data) => {
+      const { updateTask, removeTask } = useMixerStore.getState();
       if (data.status === 'completed') {
         fetchSongs();
+        removeTask(data.task_id);
+      } else {
+        // Keep failed tasks visible so user sees the error
+        updateTask(data);
+        setTimeout(() => removeTask(data.task_id), 8000);
       }
-      // Remove finished tasks immediately
-      const removeTask = useMixerStore.getState().removeTask;
-      removeTask(data.task_id);
     });
 
     // On WS reconnect, poll immediately to catch up
