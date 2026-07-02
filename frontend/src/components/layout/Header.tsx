@@ -16,7 +16,7 @@ function formatBytesShort(bytes: number): string {
 }
 
 export function Header() {
-  const { activePanel, setActivePanel } = useMixerStore();
+  const { activePanel, setActivePanel, tasks } = useMixerStore();
   const [storage, setStorage] = useState<{ total_bytes: number; limit_bytes: number; usage_percent: number } | null>(null);
 
   // Fetch storage once on mount, then every 5 minutes
@@ -26,6 +26,11 @@ export function Header() {
     const interval = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const activeTasks = Array.from(tasks.values()).filter(
+    t => t.status === 'running' || t.status === 'pending'
+  );
+  const currentTask = activeTasks.find(t => t.status === 'running') || activeTasks[0];
 
   const isDanger = storage && storage.usage_percent >= 90;
   const isWarning = storage && storage.usage_percent >= 70;
@@ -53,6 +58,33 @@ export function Header() {
           ))}
         </nav>
         <div className="w-px h-5 bg-border mx-1 md:mx-2 flex-shrink-0" />
+
+        {/* Download progress indicator */}
+        {currentTask && (
+          <button
+            onClick={() => setActivePanel('download')}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono bg-accent/10 text-accent hover:bg-accent/20 transition-colors mr-1 flex-shrink-0 max-w-[200px]"
+            title={`${activeTasks.length} active download${activeTasks.length > 1 ? 's' : ''}`}
+          >
+            <span className="relative flex h-2 w-2 flex-shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+            </span>
+            <span className="truncate hidden sm:inline">
+              {currentTask.title || 'Downloading'}
+            </span>
+            <span className="flex-shrink-0">
+              {currentTask.status === 'running'
+                ? `${Math.round(currentTask.progress * 100)}%`
+                : 'queued'}
+            </span>
+            {activeTasks.length > 1 && (
+              <span className="flex-shrink-0 bg-accent/20 rounded px-1">
+                +{activeTasks.length - 1}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* Storage indicator */}
         {storage && (

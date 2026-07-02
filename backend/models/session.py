@@ -63,6 +63,7 @@ class SessionItem(Base):
     played_at = Column(DateTime, nullable=True)
     added_by = Column(String(200), default="dj")
     notes = Column(String(500), default="")
+    separator_text = Column(String(500), nullable=True)
 
     session = relationship("Session", back_populates="items")
     song = relationship("Song")

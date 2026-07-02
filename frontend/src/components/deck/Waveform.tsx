@@ -11,16 +11,26 @@ interface WaveformProps {
   duration: number;
   muteSections: MuteSection[];
   onSeek: (time: number) => void;
+  onDragStart?: () => void;
+  onDragSeek?: (time: number) => void;
+  onDragEnd?: () => void;
 }
 
-export function Waveform({ deckId, song, currentTime, duration, muteSections, onSeek }: WaveformProps) {
+export function Waveform({ deckId, song, currentTime, duration, muteSections, onSeek, onDragStart, onDragSeek, onDragEnd }: WaveformProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const regionsRef = useRef<RegionsPlugin | null>(null);
   const loadedSongId = useRef<number | null>(null);
   const onSeekRef = useRef(onSeek);
   onSeekRef.current = onSeek;
+  const onDragStartRef = useRef(onDragStart);
+  onDragStartRef.current = onDragStart;
+  const onDragSeekRef = useRef(onDragSeek);
+  onDragSeekRef.current = onDragSeek;
+  const onDragEndRef = useRef(onDragEnd);
+  onDragEndRef.current = onDragEnd;
   const isSeeking = useRef(false);
+  const isDragging = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -46,14 +56,24 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
     });
 
     ws.on('interaction', (newTime: number) => {
-      onSeekRef.current(newTime);
+      if (isDragging.current) {
+        // During drag: silent position update only (no audio source recreation)
+        onDragSeekRef.current?.(newTime);
+      } else {
+        // Single click: full seek with audio
+        onSeekRef.current(newTime);
+      }
     });
 
     // Block currentTime sync while user is dragging the seek cursor
     ws.on('dragstart', () => {
       isSeeking.current = true;
+      isDragging.current = true;
+      onDragStartRef.current?.();
     });
     ws.on('dragend', () => {
+      isDragging.current = false;
+      onDragEndRef.current?.();
       // Release seeking lock after drag ends, giving time for audio engine to sync
       setTimeout(() => { isSeeking.current = false; }, 150);
     });

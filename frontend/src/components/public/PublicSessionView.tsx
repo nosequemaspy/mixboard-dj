@@ -123,6 +123,7 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
                 totalItems={session.items.length}
                 folderItemCounts={folderItemCounts}
                 readOnly
+                horizontal
               />
             )}
 

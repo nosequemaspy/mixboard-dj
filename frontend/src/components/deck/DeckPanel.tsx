@@ -91,6 +91,19 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
     setCurrentTime(deckId, time);
   };
 
+  const handleDragStart = () => {
+    engine.seekDragStart(deckId);
+  };
+
+  const handleDragSeek = (time: number) => {
+    engine.seekDragUpdate(deckId, time);
+    setCurrentTime(deckId, time);
+  };
+
+  const handleDragEnd = () => {
+    engine.seekDragEnd(deckId);
+  };
+
   const handleToggleMuteSections = () => {
     const newActive = !deck.muteSectionsActive;
     setMuteSectionsActive(deckId, newActive);
@@ -149,6 +162,9 @@ export function DeckPanel({ deckId }: DeckPanelProps) {
         duration={deck.duration}
         muteSections={deck.muteSections}
         onSeek={handleSeek}
+        onDragStart={handleDragStart}
+        onDragSeek={handleDragSeek}
+        onDragEnd={handleDragEnd}
       />
 
       {/* Controls */}

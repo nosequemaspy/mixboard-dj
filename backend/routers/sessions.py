@@ -344,6 +344,8 @@ def update_item(
         item.played_at = datetime.utcnow() if data.is_played else None
     if data.notes is not None:
         item.notes = data.notes
+    if data.separator_text is not None:
+        item.separator_text = data.separator_text if data.separator_text != "" else None
     db.commit()
     db.refresh(item)
 

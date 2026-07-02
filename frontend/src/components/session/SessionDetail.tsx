@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import type { SessionData } from '../../types';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
 import { SessionSongList } from './SessionSongList';
+import { TagSidebar } from './FolderChips';
 import { SuggestionReview } from './SuggestionReview';
 
 interface SessionDetailProps {
@@ -42,6 +43,17 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
   const shareUrl = `${window.location.origin}/s/${session.share_code}`;
   const pendingCount = session.suggestions.filter(s => s.status === 'pending').length;
   const notesCount = session.notes?.length || 0;
+  const folders = session.folders || [];
+
+  const folderItemCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const item of session.items) {
+      if (item.folder_id) {
+        counts[item.folder_id] = (counts[item.folder_id] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [session.items]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(shareUrl);
@@ -173,18 +185,30 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'songs' ? (
-          <SessionSongList
-            items={session.items}
-            sessionId={session.id}
-            password={password}
-            onUpdate={onUpdate}
-            folders={session.folders || []}
-            activeFolder={activeFolder}
-            onFolderChange={setActiveFolder}
-            onCreateFolder={handleCreateFolder}
-            onDeleteFolder={handleDeleteFolder}
-            onRenameFolder={handleRenameFolder}
-          />
+          <div className="flex h-full">
+            {/* Tag sidebar */}
+            <TagSidebar
+              folders={folders}
+              activeFolder={activeFolder}
+              onFolderChange={setActiveFolder}
+              totalItems={session.items.length}
+              folderItemCounts={folderItemCounts}
+              onCreate={handleCreateFolder}
+              onDelete={handleDeleteFolder}
+              onRename={handleRenameFolder}
+            />
+            {/* Song list */}
+            <div className="flex-1 min-w-0">
+              <SessionSongList
+                items={session.items}
+                sessionId={session.id}
+                password={password}
+                onUpdate={onUpdate}
+                folders={folders}
+                activeFolder={activeFolder}
+              />
+            </div>
+          </div>
         ) : activeTab === 'notes' ? (
           <div className="h-full flex flex-col">
             {/* Note creation form */}

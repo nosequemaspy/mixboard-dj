@@ -70,6 +70,7 @@ export interface BackgroundTaskInfo {
   status: string;
   error?: string;
   song_id?: number;
+  title?: string;
 }
 
 export type DeckId = 'A' | 'B';
@@ -162,6 +163,7 @@ export interface SessionItem {
   played_at: string | null;
   added_by: string;
   notes: string;
+  separator_text: string | null;
   song: Song;
 }
 

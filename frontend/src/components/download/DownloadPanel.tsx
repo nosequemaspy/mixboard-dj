@@ -13,6 +13,7 @@ export function DownloadPanel() {
   const [error, setError] = useState('');
   const fetchSongs = useLibraryStore(s => s.fetchSongs);
   const tasks = useMixerStore(s => s.tasks);
+  const updateTask = useMixerStore(s => s.updateTask);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allTasks = Array.from(tasks.values());
@@ -38,8 +39,17 @@ export function DownloadPanel() {
   const handleDownload = async () => {
     if (!url.trim()) return;
     setError('');
+    const songTitle = preview?.title;
     try {
-      await api.startDownload(url.trim(), preview?.title, preview?.artist);
+      const result = await api.startDownload(url.trim(), preview?.title, preview?.artist);
+      if (result?.task_id) {
+        updateTask({
+          task_id: result.task_id,
+          progress: 0,
+          status: 'pending',
+          title: songTitle,
+        });
+      }
       setUrl('');
       setPreview(null);
     } catch (e: any) {
@@ -129,10 +139,16 @@ export function DownloadPanel() {
             <h3 className="text-sm font-semibold text-text-primary mb-3">Active Tasks</h3>
             <div className="space-y-3">
               {activeTasks.map(task => (
-                <div key={task.task_id} className="flex items-center gap-3">
-                  <span className="text-xs text-text-secondary capitalize">{task.status}</span>
-                  <ProgressBar value={task.progress} className="flex-1" />
-                  <span className="text-xs text-text-muted">{Math.round(task.progress * 100)}%</span>
+                <div key={task.task_id} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-primary font-medium truncate mr-2">
+                      {task.title || 'Unknown'}
+                    </span>
+                    <span className="text-xs text-text-muted flex-shrink-0">
+                      {task.status === 'running' ? `Downloading... ${Math.round(task.progress * 100)}%` : 'In queue...'}
+                    </span>
+                  </div>
+                  <ProgressBar value={task.progress} className="w-full" />
                 </div>
               ))}
             </div>

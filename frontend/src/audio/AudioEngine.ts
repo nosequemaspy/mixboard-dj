@@ -356,6 +356,31 @@ export class AudioEngine {
     if (wasPlaying) this.play(deckId);
   }
 
+  /** During drag: pause audio silently, just update position. No source recreation. */
+  seekDragStart(deckId: DeckId) {
+    const deck = this.decks.get(deckId)!;
+    if (deck.isPlaying) {
+      this.cleanupSources(deck);
+      deck.isPlaying = false;
+      (deck as any)._wasDraggingWhilePlaying = true;
+    }
+  }
+
+  /** During drag: update position without recreating audio sources. */
+  seekDragUpdate(deckId: DeckId, time: number) {
+    const deck = this.decks.get(deckId)!;
+    deck.pauseOffset = time;
+  }
+
+  /** End drag: resume playback from new position if was playing. */
+  seekDragEnd(deckId: DeckId) {
+    const deck = this.decks.get(deckId)!;
+    if ((deck as any)._wasDraggingWhilePlaying) {
+      delete (deck as any)._wasDraggingWhilePlaying;
+      this.play(deckId);
+    }
+  }
+
   setVolume(deckId: DeckId, value: number) {
     const deck = this.decks.get(deckId)!;
     deck.volume.gain.setTargetAtTime(value, this.ctx.currentTime, 0.01);

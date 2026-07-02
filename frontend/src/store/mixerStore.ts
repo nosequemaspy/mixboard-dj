@@ -22,7 +22,8 @@ export const useMixerStore = create<MixerStore>((set) => ({
   setActivePanel: (panel) => set({ activePanel: panel }),
   updateTask: (task) => set(state => {
     const tasks = new Map(state.tasks);
-    tasks.set(task.task_id, task);
+    const existing = tasks.get(task.task_id);
+    tasks.set(task.task_id, existing ? { ...existing, ...task } : task);
     return { tasks };
   }),
   removeTask: (taskId) => set(state => {

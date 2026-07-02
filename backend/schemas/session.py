@@ -62,6 +62,7 @@ class SessionItemResponse(BaseModel):
     played_at: Optional[datetime]
     added_by: str
     notes: str
+    separator_text: Optional[str] = None
     song: SongResponse
 
     model_config = {"from_attributes": True}
@@ -131,6 +132,7 @@ class SessionItemUpdate(BaseModel):
     is_played: Optional[bool] = None
     notes: Optional[str] = None
     folder_id: Optional[int] = None
+    separator_text: Optional[str] = None
 
 
 # --- Suggestions ---
