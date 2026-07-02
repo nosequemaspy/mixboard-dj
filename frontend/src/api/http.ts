@@ -57,6 +57,7 @@ export const api = {
     request<any>('/downloads/preview', { method: 'POST', body: JSON.stringify({ url }) }),
   startDownload: (url: string, title?: string, artist?: string) =>
     request<any>('/downloads/start', { method: 'POST', body: JSON.stringify({ url, title, artist }) }),
+  getActiveTasks: () => request<any[]>('/downloads/tasks'),
 
   // Audio
   streamUrl: (songId: number) => `${API_BASE}/audio/stream/${songId}`,

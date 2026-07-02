@@ -43,12 +43,18 @@ export function DownloadPanel() {
     try {
       const result = await api.startDownload(url.trim(), preview?.title, preview?.artist);
       if (result?.task_id) {
-        updateTask({
-          task_id: result.task_id,
-          progress: 0,
-          status: 'pending',
-          title: songTitle,
-        });
+        // Only set initial state if WS events haven't arrived yet (race condition fix)
+        const existing = useMixerStore.getState().tasks.get(result.task_id);
+        if (!existing) {
+          updateTask({
+            task_id: result.task_id,
+            progress: 0,
+            status: 'pending',
+            title: songTitle,
+          });
+        } else if (!existing.title && songTitle) {
+          updateTask({ ...existing, title: songTitle });
+        }
       }
       setUrl('');
       setPreview(null);

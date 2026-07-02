@@ -46,6 +46,7 @@ async def complete_task(db: Session, task_id: str, error: str | None = None):
         db.commit()
     await ws_manager.broadcast("task_complete", {
         "task_id": task_id,
+        "progress": task.progress if task else (0.0 if error else 1.0),
         "status": "failed" if error else "completed",
         "error": error,
         "song_id": task.related_song_id if task else None,

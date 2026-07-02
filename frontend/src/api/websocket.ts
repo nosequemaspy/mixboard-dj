@@ -25,7 +25,12 @@ class WSClient {
     }
 
     this.ws.onopen = () => {
+      const wasReconnect = this.reconnectAttempts > 0;
       this.reconnectAttempts = 0;
+      if (wasReconnect) {
+        const handlers = this.handlers.get('_reconnect');
+        if (handlers) handlers.forEach(h => h({}));
+      }
     };
 
     this.ws.onmessage = (event) => {
