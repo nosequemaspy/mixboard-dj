@@ -1,4 +1,5 @@
 import asyncio
+import glob
 import logging
 import re
 from pathlib import Path
@@ -23,8 +24,8 @@ from websocket.manager import ws_manager
 
 
 def sanitize_filename(name: str) -> str:
-    # Remove path separators and other dangerous chars
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', name)
+    # Remove path separators, glob-special chars, and other dangerous chars
+    name = re.sub(r'[<>:"/\\|?*\[\]\x00-\x1f]', '', name)
     # Remove leading/trailing dots and spaces
     name = name.strip('. ')
     return name[:200] if name else "download"
@@ -127,8 +128,10 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 await update_task_progress(bg_db, task_id, 0.85, "running")
 
                 # Find the downloaded file (extension depends on YouTube format)
+                # Use glob.escape to handle any special chars in the filename
+                escaped_name = glob.escape(safe_name)
                 candidates = sorted(
-                    SONGS_DIR.glob(f"{safe_name}.*"),
+                    SONGS_DIR.glob(f"{escaped_name}.*"),
                     key=lambda p: p.stat().st_mtime,
                     reverse=True,
                 )
