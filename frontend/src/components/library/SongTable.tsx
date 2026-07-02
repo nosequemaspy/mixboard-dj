@@ -11,7 +11,7 @@ export function SongTable() {
   const setDuration = useDeckStore(s => s.setDuration);
   const engine = getAudioEngine();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; song: Song } | null>(null);
-  const [expandedSongId, setExpandedSongId] = useState<number | null>(null);
+  const [deckPickerSong, setDeckPickerSong] = useState<Song | null>(null);
 
   // Tag picker state
   const [tagPickerSongId, setTagPickerSongId] = useState<number | null>(null);
@@ -62,7 +62,7 @@ export function SongTable() {
     const duration = await engine.loadSong(deckId, song.id, song.stems_status === 'ready');
     setDuration(deckId, duration);
     setContextMenu(null);
-    setExpandedSongId(null);
+    setDeckPickerSong(null);
   };
 
   const handleDelete = async (song: Song) => {
@@ -113,8 +113,7 @@ export function SongTable() {
   };
 
   const handleRowClick = (song: Song) => {
-    // Toggle expanded row to show deck load buttons
-    setExpandedSongId(expandedSongId === song.id ? null : song.id);
+    setDeckPickerSong(song);
   };
 
   const formatDuration = (s: number) => {
@@ -161,32 +160,9 @@ export function SongTable() {
                 setContextMenu({ x: e.clientX, y: e.clientY, song });
               }}
               onClick={() => handleRowClick(song)}
-              className={`border-b border-border/30 hover:bg-bg-hover cursor-pointer transition-colors ${
-                expandedSongId === song.id ? 'bg-bg-hover' : ''
-              }`}
+              className="border-b border-border/30 hover:bg-bg-hover cursor-pointer transition-colors"
             >
-              <td className="py-1.5 px-3 text-text-primary truncate max-w-[200px]">
-                <div className="flex items-center gap-2">
-                  <span className="truncate">{song.title}</span>
-                  {/* Inline deck buttons - always visible when expanded, hover on desktop */}
-                  <div className={`flex gap-1 flex-shrink-0 ${
-                    expandedSongId === song.id ? 'flex' : 'hidden sm:group-hover:flex'
-                  }`}>
-                    <button
-                      onClick={e => { e.stopPropagation(); loadToDeck(song, 'A'); }}
-                      className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-deck-a/20 text-deck-a hover:bg-deck-a/40 transition-colors"
-                    >
-                      A
-                    </button>
-                    <button
-                      onClick={e => { e.stopPropagation(); loadToDeck(song, 'B'); }}
-                      className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-deck-b/20 text-deck-b hover:bg-deck-b/40 transition-colors"
-                    >
-                      B
-                    </button>
-                  </div>
-                </div>
-              </td>
+              <td className="py-1.5 px-3 text-text-primary truncate max-w-[200px]">{song.title}</td>
               <td
                 className="py-1.5 px-3 text-text-secondary truncate max-w-[150px]"
                 onDoubleClick={e => {
@@ -294,6 +270,45 @@ export function SongTable() {
           )}
         </tbody>
       </table>
+
+      {/* Deck picker overlay */}
+      {deckPickerSong && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setDeckPickerSong(null)}
+        >
+          <div
+            className="bg-bg-secondary border border-border rounded-xl p-6 mx-4 max-w-sm w-full shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-center mb-5">
+              <p className="text-text-muted text-xs uppercase tracking-wider mb-2">Reproducir en</p>
+              <p className="text-text-primary font-semibold truncate">{deckPickerSong.title}</p>
+              <p className="text-text-muted text-sm truncate">{deckPickerSong.artist}</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => loadToDeck(deckPickerSong, 'A')}
+                className="flex-1 py-3 rounded-lg text-sm font-bold bg-deck-a/20 text-deck-a border border-deck-a/30 hover:bg-deck-a/30 active:bg-deck-a/40 transition-colors"
+              >
+                Deck A
+              </button>
+              <button
+                onClick={() => loadToDeck(deckPickerSong, 'B')}
+                className="flex-1 py-3 rounded-lg text-sm font-bold bg-deck-b/20 text-deck-b border border-deck-b/30 hover:bg-deck-b/30 active:bg-deck-b/40 transition-colors"
+              >
+                Deck B
+              </button>
+            </div>
+            <button
+              onClick={() => setDeckPickerSong(null)}
+              className="w-full mt-3 py-2 rounded-lg text-xs text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Context menu */}
       {contextMenu && (
