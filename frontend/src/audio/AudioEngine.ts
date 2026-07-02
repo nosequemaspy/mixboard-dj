@@ -224,16 +224,18 @@ export class AudioEngine {
   }
 
   async loadSong(deckId: DeckId, songId: number, hasStems: boolean) {
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
     const deck = this.decks.get(deckId)!;
 
-    // Stop and clear old buffers immediately so play() can't use stale audio
+    // Stop and clear BEFORE any awaits to prevent the RAF time-update loop
+    // from writing stale time back to the store during async gaps
     if (deck.isPlaying) this.stop(deckId);
     this.cleanupSources(deck);
     deck.bufferOriginal = null;
     deck.bufferInstrumental = null;
     deck.pauseOffset = 0;
     deck.autoMuteState = false;
+
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     // Increment generation to cancel any in-flight load for this deck
     const gen = ++deck.loadGeneration;
