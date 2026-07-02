@@ -11,14 +11,12 @@ logger = logging.getLogger(__name__)
 
 # Limit to 1 concurrent download to avoid OOM on small instances
 _download_semaphore = asyncio.Semaphore(1)
-# Limit to 1 concurrent analysis (librosa is memory-heavy)
-_analysis_semaphore = asyncio.Semaphore(1)
 
 from config import SONGS_DIR, MAX_DOWNLOAD_DURATION
 from database import SessionLocal
 from models.song import Song
 from tasks.background import create_task, update_task_progress, complete_task
-from services.analysis import analyze_audio_fast, analyze_audio_full
+from services.analysis import analyze_audio_fast
 from services.storage import check_storage_available
 from websocket.manager import ws_manager
 
@@ -92,7 +90,6 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                     "--no-playlist",
                     "--max-filesize", "50m",
                     "--newline",
-                    "--concurrent-fragments", "4",
                     url,
                 ]
                 logger.info(f"Running yt-dlp: {' '.join(cmd)}")
@@ -174,11 +171,6 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
                 await complete_task(bg_db, task_id)
                 await ws_manager.broadcast("song_added", {"song_id": song.id})
 
-                # Full analysis in background (BPM, key, waveform) - non-blocking
-                song_id = song.id
-                file_path_str = str(final_path)
-                asyncio.create_task(_background_analyze(song_id, file_path_str))
-
         except Exception as e:
             logger.error(f"Download failed: {type(e).__name__}: {e}")
             # Cleanup partial file on failure
@@ -202,20 +194,3 @@ async def download_from_youtube(db: Session, url: str, title: str | None = None,
     return task_id
 
 
-async def _background_analyze(song_id: int, file_path: str):
-    """Run full librosa analysis in background and update the song."""
-    async with _analysis_semaphore:
-        bg_db = SessionLocal()
-        try:
-            analysis = await asyncio.to_thread(analyze_audio_full, file_path)
-            song = bg_db.query(Song).filter(Song.id == song_id).first()
-            if song:
-                song.bpm = analysis["bpm"]
-                song.key = analysis["key"]
-                song.waveform_peaks = analysis["waveform_peaks"]
-                bg_db.commit()
-                await ws_manager.broadcast("song_updated", {"song_id": song_id})
-        except Exception as e:
-            logger.warning(f"Background analysis failed for song {song_id}: {e}")
-        finally:
-            bg_db.close()
