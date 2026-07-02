@@ -20,6 +20,7 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
   const loadedSongId = useRef<number | null>(null);
   const onSeekRef = useRef(onSeek);
   onSeekRef.current = onSeek;
+  const isSeeking = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -32,7 +33,7 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
       waveColor: deckId === 'A' ? '#3b82f680' : '#f9731680',
       progressColor: deckId === 'A' ? '#3b82f6' : '#f97316',
       cursorColor: '#e2e8f0',
-      cursorWidth: 1,
+      cursorWidth: 2,
       height: 60,
       barWidth: 2,
       barGap: 1,
@@ -46,6 +47,20 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
 
     ws.on('interaction', (newTime: number) => {
       onSeekRef.current(newTime);
+    });
+
+    // Block currentTime sync while user is dragging the seek cursor
+    ws.on('dragstart', () => {
+      isSeeking.current = true;
+    });
+    ws.on('dragend', () => {
+      // Release seeking lock after drag ends, giving time for audio engine to sync
+      setTimeout(() => { isSeeking.current = false; }, 150);
+    });
+    // Also handle single clicks (not drag) — briefly block to prevent flicker
+    ws.on('click', () => {
+      isSeeking.current = true;
+      setTimeout(() => { isSeeking.current = false; }, 150);
     });
 
     wsRef.current = ws;
@@ -95,6 +110,8 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
 
   useEffect(() => {
     if (!wsRef.current || !duration || duration === 0) return;
+    // Don't update cursor position while user is dragging
+    if (isSeeking.current) return;
     const progress = currentTime / duration;
     wsRef.current.seekTo(Math.min(1, Math.max(0, progress)));
   }, [currentTime, duration]);
@@ -116,7 +133,7 @@ export function Waveform({ deckId, song, currentTime, duration, muteSections, on
   }, [muteSections]);
 
   return (
-    <div className="w-full bg-bg-primary rounded-md overflow-hidden border border-border/50">
+    <div className="w-full bg-bg-primary rounded-md overflow-hidden border border-border/50 cursor-pointer" style={{ touchAction: 'none' }}>
       <div ref={containerRef} className="w-full" />
     </div>
   );

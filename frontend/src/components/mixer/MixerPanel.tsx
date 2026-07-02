@@ -54,7 +54,7 @@ export function MixerPanel() {
       </div>
 
       {/* Volume faders + VU meters */}
-      <div className="flex gap-3 items-stretch flex-1 w-full justify-center min-h-0 max-h-[180px]">
+      <div className="flex gap-4 items-stretch flex-1 w-full justify-center min-h-0 max-h-[200px]">
         <div className="flex flex-col items-center gap-1">
           <span className="text-[9px] text-text-muted">VOL</span>
           <div className="flex gap-1 flex-1 min-h-0">

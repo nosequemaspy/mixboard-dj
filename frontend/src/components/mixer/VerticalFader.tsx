@@ -21,7 +21,9 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    e.stopPropagation();
+    // Capture on the track element itself, not e.target (which could be a child)
+    trackRef.current?.setPointerCapture(e.pointerId);
     setDragging(true);
     onChange(positionToValue(e.clientY));
   }, [onChange, positionToValue]);
@@ -31,8 +33,9 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
     onChange(positionToValue(e.clientY));
   }, [dragging, onChange, positionToValue]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
     setDragging(false);
+    trackRef.current?.releasePointerCapture(e.pointerId);
   }, []);
 
   useEffect(() => {
@@ -51,48 +54,51 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      className="relative w-5 cursor-pointer select-none"
+      className="relative w-8 cursor-pointer select-none"
       style={{ touchAction: 'none', height: '100%' }}
     >
+      {/* Wider invisible hit area */}
+      <div className="absolute inset-0" />
+
       {/* Track background */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-1.5 rounded-full overflow-hidden bg-bg-tertiary">
+      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-2 rounded-full overflow-hidden bg-bg-tertiary">
         {/* Fill */}
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-full transition-colors"
+          className="absolute bottom-0 left-0 right-0 rounded-full transition-[opacity] duration-75"
           style={{
             height: `${percent}%`,
             backgroundColor: color,
-            opacity: dragging ? 0.9 : 0.6,
+            opacity: dragging ? 1 : 0.7,
           }}
         />
       </div>
 
       {/* Thumb */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2"
-        style={{ bottom: `${percent}%`, top: 'auto', transform: `translateX(-50%) translateY(50%)` }}
+        className="absolute left-1/2 pointer-events-none"
+        style={{ bottom: `${percent}%`, transform: `translateX(-50%) translateY(50%)` }}
       >
         <div
-          className={`w-5 h-3 rounded-sm border transition-colors ${
+          className={`w-7 h-4 rounded-sm border-2 transition-colors ${
             dragging
               ? 'bg-text-primary border-accent shadow-lg'
               : 'bg-bg-tertiary border-border hover:border-text-muted'
           }`}
           style={{
-            boxShadow: dragging ? `0 0 6px ${color}60` : '0 1px 3px rgba(0,0,0,0.3)',
+            boxShadow: dragging ? `0 0 8px ${color}80` : '0 1px 3px rgba(0,0,0,0.3)',
           }}
         >
           {/* Grip lines */}
-          <div className="flex flex-col items-center justify-center h-full gap-px">
-            <div className="w-2.5 h-px bg-text-muted/40 rounded-full" />
-            <div className="w-2.5 h-px bg-text-muted/40 rounded-full" />
+          <div className="flex flex-col items-center justify-center h-full gap-0.5">
+            <div className="w-3.5 h-px bg-text-muted/50 rounded-full" />
+            <div className="w-3.5 h-px bg-text-muted/50 rounded-full" />
           </div>
         </div>
       </div>
 
       {/* Label */}
       {label && (
-        <div className="absolute -bottom-3.5 left-1/2 -translate-x-1/2 text-[8px] text-text-muted font-mono tabular-nums whitespace-nowrap">
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-text-muted font-mono tabular-nums whitespace-nowrap">
           {Math.round(value * 100)}
         </div>
       )}

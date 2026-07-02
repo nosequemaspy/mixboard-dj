@@ -192,7 +192,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
       <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
         {folders.length > 0 && (
           <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
         )}
