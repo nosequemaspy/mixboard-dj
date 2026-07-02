@@ -17,17 +17,15 @@ function pollActiveTasks() {
   api.getActiveTasks().then(serverTasks => {
     const serverMap = new Map(serverTasks.map((t: any) => [t.task_id, t]));
 
-    // Update tasks that are still active on the server
-    for (const st of serverTasks) {
-      updateTask(st);
-    }
-
-    // Tasks that we think are active but the server no longer has → completed
+    // Only update tasks we're already tracking locally (don't add new ones)
     for (const local of activeTasks) {
-      if (!serverMap.has(local.task_id)) {
-        updateTask({ ...local, status: 'completed', progress: 1 });
+      const server = serverMap.get(local.task_id);
+      if (server) {
+        updateTask(server);
+      } else {
+        // Server no longer has this task → it completed or failed
+        removeTask(local.task_id);
         fetchSongs();
-        setTimeout(() => removeTask(local.task_id), 10000);
       }
     }
   }).catch(() => {});
@@ -58,13 +56,12 @@ export function useWebSocket() {
     });
 
     const unsub2 = wsClient.on('task_complete', (data) => {
-      updateTask(data);
       if (data.status === 'completed') {
         fetchSongs();
       }
-      // Auto-cleanup completed/failed tasks after 10 seconds to prevent memory leak
+      // Remove finished tasks immediately
       const removeTask = useMixerStore.getState().removeTask;
-      setTimeout(() => removeTask(data.task_id), 10000);
+      removeTask(data.task_id);
     });
 
     // On WS reconnect, poll immediately to catch up

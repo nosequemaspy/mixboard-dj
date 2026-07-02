@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -29,6 +31,18 @@ async def start_download(data: DownloadRequest, db: Session = Depends(get_db)):
 
 @router.get("/tasks")
 async def get_active_tasks(db: Session = Depends(get_db)):
+    # Clean up stale tasks (stuck running/pending for over 10 minutes)
+    cutoff = datetime.utcnow() - timedelta(minutes=10)
+    stale = db.query(BackgroundTask).filter(
+        BackgroundTask.status.in_(["pending", "running"]),
+        BackgroundTask.updated_at < cutoff,
+    ).all()
+    for t in stale:
+        t.status = "failed"
+        t.error_message = "Timed out"
+    if stale:
+        db.commit()
+
     tasks = db.query(BackgroundTask).filter(
         BackgroundTask.status.in_(["pending", "running"])
     ).all()

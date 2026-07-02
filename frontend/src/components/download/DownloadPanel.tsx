@@ -16,11 +16,9 @@ export function DownloadPanel() {
   const updateTask = useMixerStore(s => s.updateTask);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allTasks = Array.from(tasks.values());
-  const activeTasks = allTasks.filter(
+  const activeTasks = Array.from(tasks.values()).filter(
     t => t.status === 'running' || t.status === 'pending'
   );
-  const failedTasks = allTasks.filter(t => t.status === 'failed');
 
   const handlePreview = async () => {
     if (!url.trim()) return;
@@ -161,19 +159,6 @@ export function DownloadPanel() {
           </div>
         )}
 
-        {/* Failed tasks */}
-        {failedTasks.length > 0 && (
-          <div className="bg-danger/10 rounded-xl border border-danger/30 p-5">
-            <h3 className="text-sm font-semibold text-danger mb-3">Download Errors</h3>
-            <div className="space-y-2">
-              {failedTasks.map(task => (
-                <p key={task.task_id} className="text-xs text-danger/80">
-                  {task.error || 'Unknown error'}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
