@@ -1,7 +1,12 @@
+import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from config import SONGS_DIR, STEMS_DIR, EDITS_DIR
@@ -11,6 +16,10 @@ from models.stem import Stem
 from models.edit import EditedSong
 from schemas.edit import EditRequest, EditedSongResponse
 from services.audio_edit import trim_audio, cut_sections, vocal_mute_sections
+
+
+class ExportRequest(BaseModel):
+    song_ids: list[int]
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
 
@@ -166,3 +175,44 @@ def delete_edit(edit_id: int, db: Session = Depends(get_db)):
     db.delete(edited)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/export")
+def export_songs(data: ExportRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    if not data.song_ids:
+        raise HTTPException(status_code=400, detail="No songs selected")
+
+    songs = db.query(Song).filter(Song.id.in_(data.song_ids)).all()
+    if not songs:
+        raise HTTPException(status_code=404, detail="No songs found")
+
+    tmp_dir = tempfile.mkdtemp()
+    zip_path = Path(tmp_dir) / "songs.zip"
+
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for song in songs:
+                # Check for latest edit
+                latest_edit = (
+                    db.query(EditedSong)
+                    .filter(EditedSong.original_song_id == song.id)
+                    .order_by(desc(EditedSong.created_at))
+                    .first()
+                )
+
+                if latest_edit:
+                    file_path = resolve_path(latest_edit.file_path)
+                else:
+                    file_path = resolve_path(song.file_path)
+
+                if not file_path.exists():
+                    continue
+
+                arcname = f"{song.artist} - {song.title}{file_path.suffix}"
+                zf.write(file_path, arcname)
+    except Exception as e:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Error creating zip: {str(e)}")
+
+    background_tasks.add_task(shutil.rmtree, tmp_dir, True)
+    return FileResponse(zip_path, filename="songs.zip", media_type="application/zip")

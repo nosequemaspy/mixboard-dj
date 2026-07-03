@@ -68,6 +68,26 @@ export const api = {
   getEdits: (songId: number) => request<any[]>(`/audio/edits/${songId}`),
   createEdit: (data: any) => request<any>('/audio/edit', { method: 'POST', body: JSON.stringify(data) }),
   deleteEdit: (editId: number) => request<any>(`/audio/edit/${editId}`, { method: 'DELETE' }),
+  exportSongs: async (songIds: number[]) => {
+    const res = await fetch(`${API_BASE}/audio/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ song_ids: songIds }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Export failed');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'songs.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 
   // Settings
   getSettings: () => request<any>('/settings'),
