@@ -1,13 +1,14 @@
 import json
+import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from config import EDITS_DIR, STEMS_DIR, SONGS_DIR, STORAGE_DIR
 from models.song import Song
-from models.edit import EditedSong
 from models.stem import Stem
 
 
@@ -37,8 +38,7 @@ def get_duration_ffprobe(file_path: Path) -> float:
     )
     if result.returncode != 0:
         raise ValueError(f"ffprobe failed: {result.stderr}")
-    import json as _json
-    info = _json.loads(result.stdout)
+    info = json.loads(result.stdout)
     return float(info["format"]["duration"])
 
 
@@ -49,7 +49,22 @@ def run_ffmpeg(cmd: list[str]):
         raise ValueError(f"ffmpeg failed: {result.stderr[:500]}")
 
 
-def trim_audio(db: Session, song_id: int, name: str, start_seconds: float, end_seconds: float) -> EditedSong:
+def _replace_original(song: Song, tmp_output: str, db: Session):
+    """Replace the original song file with the edited version and update the DB record."""
+    original_path = get_absolute_path(song.file_path)
+    new_duration = get_duration_ffprobe(Path(tmp_output))
+
+    # Replace original file
+    os.replace(tmp_output, str(original_path))
+
+    # Update song record
+    song.duration_seconds = new_duration
+    song.waveform_peaks = None
+    db.commit()
+    db.refresh(song)
+
+
+def trim_audio(db: Session, song_id: int, name: str, start_seconds: float, end_seconds: float) -> Song:
     song = db.query(Song).filter(Song.id == song_id).first()
     if not song:
         raise ValueError(f"Song {song_id} not found")
@@ -58,37 +73,28 @@ def trim_audio(db: Session, song_id: int, name: str, start_seconds: float, end_s
         raise ValueError("Invalid trim range: start must be >= 0 and end must be > start")
 
     input_path = get_absolute_path(song.file_path)
-    output_dir = EDITS_DIR / str(song_id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = sanitize_filename(name)
-    output_path = output_dir / f"{safe_name}.mp3"
+    fd, tmp_output = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd)
 
-    run_ffmpeg([
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-ss", str(start_seconds),
-        "-to", str(end_seconds),
-        "-c:a", "libmp3lame", "-b:a", "320k",
-        str(output_path),
-    ])
+    try:
+        run_ffmpeg([
+            "ffmpeg", "-y",
+            "-i", str(input_path),
+            "-ss", str(start_seconds),
+            "-to", str(end_seconds),
+            "-c:a", "libmp3lame", "-b:a", "320k",
+            tmp_output,
+        ])
+        _replace_original(song, tmp_output, db)
+    except Exception:
+        if os.path.exists(tmp_output):
+            os.unlink(tmp_output)
+        raise
 
-    duration = get_duration_ffprobe(output_path)
-
-    edited = EditedSong(
-        original_song_id=song_id,
-        name=name,
-        file_path=str(output_path.relative_to(STORAGE_DIR.parent)),
-        edit_type="trim",
-        edit_metadata=json.dumps({"start_seconds": start_seconds, "end_seconds": end_seconds}),
-        duration_seconds=duration,
-    )
-    db.add(edited)
-    db.commit()
-    db.refresh(edited)
-    return edited
+    return song
 
 
-def cut_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> EditedSong:
+def cut_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> Song:
     song = db.query(Song).filter(Song.id == song_id).first()
     if not song:
         raise ValueError(f"Song {song_id} not found")
@@ -122,37 +128,28 @@ def cut_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> 
     filter_parts.append(f"{concat_inputs}concat=n={len(keep)}:v=0:a=1[out]")
     filter_complex = ";".join(filter_parts)
 
-    output_dir = EDITS_DIR / str(song_id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = sanitize_filename(name)
-    output_path = output_dir / f"{safe_name}.mp3"
+    fd, tmp_output = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd)
 
-    run_ffmpeg([
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-filter_complex", filter_complex,
-        "-map", "[out]",
-        "-c:a", "libmp3lame", "-b:a", "320k",
-        str(output_path),
-    ])
+    try:
+        run_ffmpeg([
+            "ffmpeg", "-y",
+            "-i", str(input_path),
+            "-filter_complex", filter_complex,
+            "-map", "[out]",
+            "-c:a", "libmp3lame", "-b:a", "320k",
+            tmp_output,
+        ])
+        _replace_original(song, tmp_output, db)
+    except Exception:
+        if os.path.exists(tmp_output):
+            os.unlink(tmp_output)
+        raise
 
-    duration = get_duration_ffprobe(output_path)
-
-    edited = EditedSong(
-        original_song_id=song_id,
-        name=name,
-        file_path=str(output_path.relative_to(STORAGE_DIR.parent)),
-        edit_type="cut_section",
-        edit_metadata=json.dumps({"sections": sections}),
-        duration_seconds=duration,
-    )
-    db.add(edited)
-    db.commit()
-    db.refresh(edited)
-    return edited
+    return song
 
 
-def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> EditedSong:
+def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dict]) -> Song:
     song = db.query(Song).filter(Song.id == song_id).first()
     if not song:
         raise ValueError(f"Song {song_id} not found")
@@ -174,7 +171,6 @@ def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dic
     instrumental_path = get_absolute_path(instrumental_stem.file_path)
 
     # Build segments: original for non-muted parts, instrumental for muted parts
-    # input 0 = original, input 1 = instrumental
     sorted_sections = sorted(sections, key=lambda s: s["start"])
     segments = []
     cursor = 0.0
@@ -182,10 +178,8 @@ def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dic
         start = max(cursor, s["start"])
         end = s["end"]
         if start > cursor:
-            # Keep original from cursor to start
             segments.append((0, cursor, start))
         if end > start:
-            # Use instrumental for muted section
             segments.append((1, start, end))
         cursor = max(cursor, end)
     if cursor < total_duration:
@@ -202,32 +196,23 @@ def vocal_mute_sections(db: Session, song_id: int, name: str, sections: list[dic
     filter_parts.append(f"{concat_inputs}concat=n={len(segments)}:v=0:a=1[out]")
     filter_complex = ";".join(filter_parts)
 
-    output_dir = EDITS_DIR / str(song_id)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = sanitize_filename(name)
-    output_path = output_dir / f"{safe_name}.mp3"
+    fd, tmp_output = tempfile.mkstemp(suffix=".mp3")
+    os.close(fd)
 
-    run_ffmpeg([
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-i", str(instrumental_path),
-        "-filter_complex", filter_complex,
-        "-map", "[out]",
-        "-c:a", "libmp3lame", "-b:a", "320k",
-        str(output_path),
-    ])
+    try:
+        run_ffmpeg([
+            "ffmpeg", "-y",
+            "-i", str(input_path),
+            "-i", str(instrumental_path),
+            "-filter_complex", filter_complex,
+            "-map", "[out]",
+            "-c:a", "libmp3lame", "-b:a", "320k",
+            tmp_output,
+        ])
+        _replace_original(song, tmp_output, db)
+    except Exception:
+        if os.path.exists(tmp_output):
+            os.unlink(tmp_output)
+        raise
 
-    duration = get_duration_ffprobe(output_path)
-
-    edited = EditedSong(
-        original_song_id=song_id,
-        name=name,
-        file_path=str(output_path.relative_to(STORAGE_DIR.parent)),
-        edit_type="vocal_mute_section",
-        edit_metadata=json.dumps({"sections": sections}),
-        duration_seconds=duration,
-    )
-    db.add(edited)
-    db.commit()
-    db.refresh(edited)
-    return edited
+    return song

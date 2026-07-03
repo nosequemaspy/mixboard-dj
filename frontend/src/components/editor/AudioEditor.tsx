@@ -7,7 +7,7 @@ import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
-import type { Song, EditedSong, MuteSection } from '../../types';
+import type { Song } from '../../types';
 
 interface Clip {
   id: string;
@@ -101,6 +101,7 @@ const IconReset = () => (
 
 export function AudioEditor() {
   const songs = useLibraryStore(s => s.songs);
+  const fetchSongs = useLibraryStore(s => s.fetchSongs);
   const removeSongFromStore = useLibraryStore(s => s.removeSong);
 
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
@@ -116,9 +117,7 @@ export function AudioEditor() {
   const [clipHistory, setClipHistory] = useState<Clip[][]>([]);
 
   const [editName, setEditName] = useState('');
-  const [edits, setEdits] = useState<EditedSong[]>([]);
   const [saving, setSaving] = useState(false);
-  const [playingEditId, setPlayingEditId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -131,7 +130,6 @@ export function AudioEditor() {
   const wsRef = useRef<WaveSurfer | null>(null);
   const regionsRef = useRef<RegionsPlugin | null>(null);
   const loadedSongId = useRef<number | null>(null);
-  const editAudioRef = useRef<HTMLAudioElement | null>(null);
   const clipsRef = useRef<Clip[]>([]);
   // Web Audio API refs for instrumental (same approach as AudioEngine/deck)
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -394,12 +392,6 @@ export function AudioEditor() {
     setSelectedClipId(null);
     setClipHistory([]);
 
-    if (editAudioRef.current) {
-      editAudioRef.current.pause();
-      editAudioRef.current = null;
-      setPlayingEditId(null);
-    }
-
     const ws = wsRef.current;
     let cancelled = false;
 
@@ -420,7 +412,6 @@ export function AudioEditor() {
     })();
 
     setEditName(`${selectedSong.title} - edited`);
-    loadEdits(selectedSong.id);
     return () => { cancelled = true; };
   }, [selectedSong]);
 
@@ -599,7 +590,6 @@ export function AudioEditor() {
 
   useEffect(() => {
     return () => {
-      if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
       stopInst();
       if (audioCtxRef.current) {
         audioCtxRef.current.close();
@@ -620,10 +610,6 @@ export function AudioEditor() {
     wsRef.current.seekTo(Math.min(Math.max(time / duration, 0), 1));
   }, [duration]);
 
-  const loadEdits = async (songId: number) => {
-    try { setEdits(await api.getEdits(songId)); } catch { setEdits([]); }
-  };
-
   const handleSeparateStems = async () => {
     if (!selectedSong || separatingStems) return;
     try {
@@ -641,7 +627,7 @@ export function AudioEditor() {
       if (delClips.length > 0) {
         await api.createEdit({
           song_id: selectedSong.id,
-          name: editName.trim() + (muteClips.length > 0 ? ' (corte)' : ''),
+          name: editName.trim(),
           edit_type: 'cut_section',
           params: { sections: delClips.map(c => ({ start: c.start, end: c.end })) },
         });
@@ -649,57 +635,20 @@ export function AudioEditor() {
       if (muteClips.length > 0) {
         await api.createEdit({
           song_id: selectedSong.id,
-          name: editName.trim() + (delClips.length > 0 ? ' (vocal mute)' : ''),
+          name: editName.trim(),
           edit_type: 'vocal_mute_section',
           params: { sections: muteClips.map(c => ({ start: c.start, end: c.end })) },
         });
       }
-      loadEdits(selectedSong.id);
       resetClips();
-
-      // Sync mute sections to decks if this song is loaded there
-      if (muteClips.length > 0) {
-        const songId = selectedSong.id;
-        const { deckA, deckB, setMuteSections } = useDeckStore.getState();
-        const engine = getAudioEngine();
-
-        // Fetch ALL mute edits for this song to get complete sections
-        try {
-          const allEdits = await api.getEdits(songId);
-          const allSections: MuteSection[] = [];
-          for (const edit of allEdits.filter((e: any) => e.edit_type === 'vocal_mute_section')) {
-            try {
-              const meta = typeof edit.edit_metadata === 'string' ? JSON.parse(edit.edit_metadata) : edit.edit_metadata;
-              if (meta?.sections) allSections.push(...meta.sections);
-            } catch {}
-          }
-          for (const [deckId, deck] of [['A', deckA], ['B', deckB]] as const) {
-            if (deck.song?.id === songId) {
-              setMuteSections(deckId, allSections);
-              engine.setMuteSections(deckId, allSections);
-            }
-          }
-        } catch {}
-      }
+      // Reload waveform to reflect the edited audio
+      loadedSongId.current = null;
+      setSelectedSong({ ...selectedSong });
+      // Refresh song list to update duration
+      fetchSongs();
     } catch (e: any) {
       alert(e.message || 'Error al guardar');
     } finally { setSaving(false); }
-  };
-
-  const handlePlayEdit = (editId: number) => {
-    if (editAudioRef.current) { editAudioRef.current.pause(); editAudioRef.current = null; }
-    if (playingEditId === editId) { setPlayingEditId(null); return; }
-    const audio = new Audio(api.editStreamUrl(editId));
-    audio.play();
-    audio.onended = () => { setPlayingEditId(null); editAudioRef.current = null; };
-    editAudioRef.current = audio;
-    setPlayingEditId(editId);
-  };
-
-  const handleDeleteEdit = async (editId: number) => {
-    if (playingEditId === editId) { editAudioRef.current?.pause(); editAudioRef.current = null; setPlayingEditId(null); }
-    await api.deleteEdit(editId);
-    if (selectedSong) loadEdits(selectedSong.id);
   };
 
   const handleDeleteSong = async (songId: number) => {
@@ -710,7 +659,7 @@ export function AudioEditor() {
         wsRef.current?.pause();
         setSelectedSong(null);
         loadedSongId.current = null;
-        setClips([]); setSelectedClipId(null); setClipHistory([]); setEdits([]);
+        setClips([]); setSelectedClipId(null); setClipHistory([]);
       }
       setDeleteConfirm(null);
     } catch (e: any) { alert(e.message || 'Error al eliminar'); }
@@ -1033,7 +982,7 @@ export function AudioEditor() {
         )}
 
         {/* --- Save / Edits Panel --- */}
-        {selectedSong && (hasModifications || edits.length > 0) && (
+        {selectedSong && hasModifications && (
           <div className="border-t border-border bg-bg-secondary max-h-[30%] overflow-y-auto">
 
             {/* Save controls */}
@@ -1061,61 +1010,11 @@ export function AudioEditor() {
               </div>
             )}
 
-            {/* Saved edits */}
-            {edits.length > 0 && (
-              <div className={`px-4 py-2 ${hasModifications ? 'border-t border-border/30' : ''}`}>
-                <span className="text-[10px] text-text-muted uppercase tracking-wider font-bold">
-                  Edits guardados ({edits.length})
-                </span>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {edits.map(edit => (
-                    <div key={edit.id} className="flex items-center gap-1.5 bg-bg-primary border border-border/40 rounded px-2 py-1 group">
-                      <span className="text-[11px] text-text-primary font-medium truncate max-w-[150px]">{edit.name}</span>
-                      <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${
-                        edit.edit_type === 'cut_section' ? 'bg-danger/15 text-danger' : 'bg-warning/15 text-warning'
-                      }`}>
-                        {edit.edit_type === 'cut_section' ? 'corte' : 'mute'}
-                      </span>
-                      <span className="text-[10px] text-text-muted font-mono">{fmt(edit.duration_seconds)}</span>
-                      <button
-                        onClick={() => handlePlayEdit(edit.id)}
-                        className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                          playingEditId === edit.id ? 'bg-accent text-white' : 'text-accent hover:bg-accent/20'
-                        }`}
-                      >
-                        {playingEditId === edit.id ? (
-                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-                        ) : (
-                          <svg className="w-2.5 h-2.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-                        )}
-                      </button>
-                      <a
-                        href={api.editStreamUrl(edit.id)}
-                        download={`${edit.name}.mp3`}
-                        className="w-5 h-5 rounded-full text-success hover:bg-success/20 flex items-center justify-center"
-                      >
-                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </a>
-                      <button
-                        onClick={() => handleDeleteEdit(edit.id)}
-                        className="w-5 h-5 rounded-full text-danger hover:bg-danger/20 flex items-center justify-center"
-                      >
-                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
         {/* --- Instructions --- */}
-        {selectedSong && !hasModifications && !isLoading && !loadError && duration > 0 && edits.length === 0 && clips.length === 1 && (
+        {selectedSong && !hasModifications && !isLoading && !loadError && duration > 0 && clips.length === 1 && (
           <div className="border-t border-border bg-bg-secondary px-4 py-2 text-center">
             <span className="text-[11px] text-text-muted">
               Reproduce el audio, pausa donde quieras cortar y presiona{' '}

@@ -6,7 +6,6 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from config import SONGS_DIR, STEMS_DIR, EDITS_DIR
@@ -145,17 +144,18 @@ def list_edits(song_id: int, db: Session = Depends(get_db)):
     return edits
 
 
-@router.post("/edit", response_model=EditedSongResponse)
+@router.post("/edit")
 def create_edit(data: EditRequest, db: Session = Depends(get_db)):
     try:
         if data.edit_type == "trim":
-            return trim_audio(db, data.song_id, data.name, data.params["start_seconds"], data.params["end_seconds"])
+            trim_audio(db, data.song_id, data.name, data.params["start_seconds"], data.params["end_seconds"])
         elif data.edit_type == "cut_section":
-            return cut_sections(db, data.song_id, data.name, data.params["sections"])
+            cut_sections(db, data.song_id, data.name, data.params["sections"])
         elif data.edit_type == "vocal_mute_section":
-            return vocal_mute_sections(db, data.song_id, data.name, data.params["sections"])
+            vocal_mute_sections(db, data.song_id, data.name, data.params["sections"])
         else:
             raise HTTPException(status_code=400, detail=f"Unknown edit type: {data.edit_type}")
+        return {"ok": True}
     except HTTPException:
         raise
     except ValueError as e:
@@ -192,22 +192,9 @@ def export_songs(data: ExportRequest, background_tasks: BackgroundTasks, db: Ses
     try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for song in songs:
-                # Check for latest edit
-                latest_edit = (
-                    db.query(EditedSong)
-                    .filter(EditedSong.original_song_id == song.id)
-                    .order_by(desc(EditedSong.created_at))
-                    .first()
-                )
-
-                if latest_edit:
-                    file_path = resolve_path(latest_edit.file_path)
-                else:
-                    file_path = resolve_path(song.file_path)
-
+                file_path = resolve_path(song.file_path)
                 if not file_path.exists():
                     continue
-
                 arcname = f"{song.artist} - {song.title}{file_path.suffix}"
                 zf.write(file_path, arcname)
     except Exception as e:
