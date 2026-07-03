@@ -3,8 +3,6 @@ import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.esm.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
-import { useDeckStore } from '../../store/deckStore';
-import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
 import type { Song } from '../../types';
