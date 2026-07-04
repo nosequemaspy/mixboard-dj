@@ -153,7 +153,9 @@ export function SongTable() {
           {songs.map(song => (
             <tr
               key={song.id}
-              draggable
+              onMouseDown={e => { (e.currentTarget as HTMLElement).draggable = true; }}
+              onMouseUp={e => { (e.currentTarget as HTMLElement).draggable = false; }}
+              onDragEnd={e => { (e.currentTarget as HTMLElement).draggable = false; }}
               onDragStart={e => handleDragStart(e, song)}
               onContextMenu={e => {
                 e.preventDefault();
