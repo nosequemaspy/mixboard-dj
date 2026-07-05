@@ -20,8 +20,26 @@
 }
 
 * {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-bg-tertiary) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-border) var(--color-bg-primary);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 5px;
+  border: 2px solid var(--color-bg-primary);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-bg-hover);
 }
 
 body {
