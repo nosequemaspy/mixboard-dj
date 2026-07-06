@@ -19,7 +19,10 @@ function generateSongsTxt(songs: Song[]): string {
   lines.push('='.repeat(50));
   lines.push(`Total: ${songs.length} canciones`);
   lines.push('');
-  lines.push('Podés copiar este archivo y pegarlo en una IA para que te arme un orden de playlist, un mix con transiciones suaves, cambios de género, etc.');
+  lines.push('Armame un orden para una playlist/mix de DJ con estas canciones.');
+  lines.push('Tené en cuenta: transiciones suaves entre canciones similares,');
+  lines.push('cambios de género progresivos, y un flujo de energía que suba y baje.');
+  lines.push('Si conocés las canciones, estimá BPM y tonalidad para mezclas armónicas.');
   lines.push('');
   lines.push('-'.repeat(50));
   lines.push('');

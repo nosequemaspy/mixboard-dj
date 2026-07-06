@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import shutil
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from models.edit import EditedSong
 from models.category import Category
 from schemas.song import SongResponse, SongListResponse, SongUpdate
 from services.analysis import analyze_audio_fast
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/songs", tags=["songs"])
 
@@ -151,6 +154,28 @@ def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(song)
     return song
+
+
+@router.post("/reanalyze")
+async def reanalyze_songs(db: Session = Depends(get_db)):
+    """Re-analyze all songs that have duration_seconds=0 using ffprobe."""
+    songs = db.query(Song).filter(Song.duration_seconds <= 0).all()
+    updated = 0
+    for song in songs:
+        file_path = Path(song.file_path)
+        if not file_path.is_absolute():
+            file_path = SONGS_DIR.parent.parent / file_path
+        if not file_path.exists():
+            continue
+        try:
+            analysis = await asyncio.to_thread(analyze_audio_fast, str(file_path))
+            if analysis["duration_seconds"] > 0:
+                song.duration_seconds = analysis["duration_seconds"]
+                updated += 1
+        except Exception as e:
+            logger.warning(f"Failed to analyze song {song.id}: {e}")
+    db.commit()
+    return {"analyzed": len(songs), "updated": updated}
 
 
 @router.delete("/{song_id}")
