@@ -17,7 +17,6 @@ export function CategoryFilter() {
 
   const handleSelect = (id: number | null) => {
     setSelectedCategory(id);
-    fetchSongs();
   };
 
   const handleCreate = async () => {
@@ -32,8 +31,8 @@ export function CategoryFilter() {
     await api.deleteCategory(id);
     if (selectedCategoryId === id) {
       setSelectedCategory(null);
-      fetchSongs();
     }
+    fetchSongs();
     fetchCategories();
   };
 

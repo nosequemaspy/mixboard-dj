@@ -39,13 +39,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   fetchSongs: async () => {
     set({ loading: true });
     try {
-      const { search, selectedCategoryId, sortBy, sortDir } = get();
-      const data = await api.getSongs({
-        search: search || undefined,
-        category_id: selectedCategoryId || undefined,
-        sort_by: sortBy,
-        sort_dir: sortDir,
-      });
+      const data = await api.getSongs({});
       set({ songs: data.songs, loading: false });
     } catch {
       set({ loading: false });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Song, DeckId } from '../../types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useDeckStore } from '../../store/deckStore';
@@ -6,7 +6,36 @@ import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
 
 export function SongTable() {
-  const { songs, categories, sortBy, sortDir, setSort, fetchSongs, fetchCategories } = useLibraryStore();
+  const { songs, categories, search, selectedCategoryId, sortBy, sortDir, setSort, fetchSongs, fetchCategories } = useLibraryStore();
+
+  const displaySongs = useMemo(() => {
+    let result = [...songs];
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(s =>
+        s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q)
+      );
+    }
+
+    if (selectedCategoryId) {
+      result = result.filter(s => s.categories.some(c => c.id === selectedCategoryId));
+    }
+
+    result.sort((a, b) => {
+      const aVal = (a as any)[sortBy];
+      const bVal = (b as any)[sortBy];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      const cmp = typeof aVal === 'string'
+        ? aVal.localeCompare(bVal as string)
+        : (aVal as number) - (bVal as number);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return result;
+  }, [songs, search, selectedCategoryId, sortBy, sortDir]);
   const loadSong = useDeckStore(s => s.loadSong);
   const setDuration = useDeckStore(s => s.setDuration);
   const engine = getAudioEngine();
@@ -49,7 +78,6 @@ export function SongTable() {
   const handleSort = (field: string) => {
     const newDir = sortBy === field && sortDir === 'asc' ? 'desc' : 'asc';
     setSort(field, newDir);
-    fetchSongs();
   };
 
   const handleDragStart = (e: React.DragEvent, song: Song) => {
@@ -150,7 +178,7 @@ export function SongTable() {
           </tr>
         </thead>
         <tbody>
-          {songs.map(song => (
+          {displaySongs.map(song => (
             <tr
               key={song.id}
               onMouseDown={e => { (e.currentTarget as HTMLElement).draggable = true; }}
@@ -263,10 +291,12 @@ export function SongTable() {
               </td>
             </tr>
           ))}
-          {songs.length === 0 && (
+          {displaySongs.length === 0 && (
             <tr>
               <td colSpan={7} className="py-8 text-center text-text-muted text-sm">
-                No songs found. Import or download some music to get started.
+                {songs.length === 0
+                  ? 'No songs found. Import or download some music to get started.'
+                  : 'No songs match the current filter.'}
               </td>
             </tr>
           )}
