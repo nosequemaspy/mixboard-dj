@@ -6,6 +6,7 @@ from models.edit import EditedSong
 from models.task import BackgroundTask
 from models.settings import UserSettings
 from models.session import Session, SessionItem, SessionFolder, SessionSuggestion
+from models.playback_settings import SongPlaybackSettings
 
 __all__ = [
     "Song", "SongCategory", "song_categories",
@@ -16,4 +17,5 @@ __all__ = [
     "BackgroundTask",
     "UserSettings",
     "Session", "SessionItem", "SessionFolder", "SessionSuggestion",
+    "SongPlaybackSettings",
 ]

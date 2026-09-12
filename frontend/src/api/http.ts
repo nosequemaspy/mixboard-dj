@@ -154,6 +154,24 @@ export const api = {
   deleteNote: (sessionId: number, noteId: number, password?: string) =>
     request<any>(`/sessions/${sessionId}/notes/${noteId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
 
+  // Playback Settings
+  getPlaybackSettings: (songId: number) => request<any>(`/songs/${songId}/playback-settings`),
+  updatePlaybackSettings: (songId: number, data: any) =>
+    request<any>(`/songs/${songId}/playback-settings`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Player helpers
+  markSongPlayed: (sessionId: number, songId: number, isPlayed: boolean, password?: string) =>
+    request<any>(`/sessions/${sessionId}/mark-played`, {
+      method: 'POST',
+      body: JSON.stringify({ song_id: songId, is_played: isPlayed }),
+      headers: passwordHeaders(password),
+    }),
+  resetAllPlayed: (sessionId: number, password?: string) =>
+    request<any>(`/sessions/${sessionId}/reset-played`, {
+      method: 'POST',
+      headers: passwordHeaders(password),
+    }),
+
   // YouTube oEmbed
   youtubeOembed: (url: string) => request<any>(`/youtube/oembed?url=${encodeURIComponent(url)}`),
 };

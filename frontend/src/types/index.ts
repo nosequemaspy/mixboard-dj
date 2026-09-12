@@ -1,3 +1,13 @@
+export interface PlaybackSettings {
+  id: number;
+  song_id: number;
+  start_time: number;
+  end_time: number | null;
+  transition_duration: number;
+  transition_type: string;
+  playback_speed: number;
+}
+
 export interface Song {
   id: number;
   title: string;
@@ -14,6 +24,7 @@ export interface Song {
   created_at: string;
   categories: CategoryInSong[];
   stems: StemInSong[];
+  playback_settings: PlaybackSettings | null;
 }
 
 export interface CategoryInSong {

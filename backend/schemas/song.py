@@ -35,6 +35,26 @@ class StemInSong(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PlaybackSettingsResponse(BaseModel):
+    id: int
+    song_id: int
+    start_time: float = 0.0
+    end_time: Optional[float] = None
+    transition_duration: float = 4.0
+    transition_type: str = "smooth"
+    playback_speed: float = 1.0
+
+    model_config = {"from_attributes": True}
+
+
+class PlaybackSettingsUpdate(BaseModel):
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    transition_duration: Optional[float] = None
+    transition_type: Optional[str] = None
+    playback_speed: Optional[float] = None
+
+
 class SongResponse(BaseModel):
     id: int
     title: str
@@ -51,6 +71,7 @@ class SongResponse(BaseModel):
     created_at: datetime
     categories: list[CategoryInSong] = []
     stems: list[StemInSong] = []
+    playback_settings: Optional[PlaybackSettingsResponse] = None
 
     model_config = {"from_attributes": True}
 

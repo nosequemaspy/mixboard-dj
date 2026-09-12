@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMixerStore } from '../../store/mixerStore';
 import { api } from '../../api/http';
 
@@ -16,6 +17,7 @@ function formatBytesShort(bytes: number): string {
 }
 
 export function Header() {
+  const navigate = useNavigate();
   const { activePanel, setActivePanel, tasks } = useMixerStore();
   const [storage, setStorage] = useState<{ total_bytes: number; limit_bytes: number; usage_percent: number } | null>(null);
 
@@ -57,6 +59,20 @@ export function Header() {
             </button>
           ))}
         </nav>
+        <div className="w-px h-5 bg-border mx-1 md:mx-2 flex-shrink-0" />
+
+        {/* Player mode button */}
+        <button
+          onClick={() => navigate('/player')}
+          className="px-2 md:px-3 py-1.5 text-xs md:text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary flex items-center gap-1"
+          title="Modo Player"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          <span className="hidden sm:inline">Player</span>
+        </button>
+
         <div className="w-px h-5 bg-border mx-1 md:mx-2 flex-shrink-0" />
 
         {/* Download progress indicator */}

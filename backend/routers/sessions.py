@@ -7,9 +7,12 @@ from sqlalchemy.exc import IntegrityError
 import bcrypt
 import httpx
 
+from pydantic import BaseModel as PydanticBase
+
 from database import get_db
 from models.session import Session as SessionModel, SessionItem, SessionFolder, SessionSuggestion, SessionNote, generate_share_code
 from models.song import Song
+from models.playback_settings import SongPlaybackSettings
 from schemas.session import (
     SessionCreate, SessionUpdate, SessionDuplicate, SessionVerify,
     SessionResponse, SessionListResponse,
@@ -42,6 +45,7 @@ def _load_session(db: Session, session_id: int) -> SessionModel:
     session = db.query(SessionModel).options(
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.playback_settings),
         joinedload(SessionModel.folders),
         joinedload(SessionModel.suggestions),
         joinedload(SessionModel.notes),
@@ -124,6 +128,7 @@ def get_session_by_code(
     session = db.query(SessionModel).options(
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionModel.items).joinedload(SessionItem.song).joinedload(Song.playback_settings),
         joinedload(SessionModel.folders),
         joinedload(SessionModel.suggestions),
         joinedload(SessionModel.notes),
@@ -277,6 +282,7 @@ def list_items(session_id: int, db: Session = Depends(get_db)):
     items = db.query(SessionItem).options(
         joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionItem.song).joinedload(Song.playback_settings),
     ).filter(SessionItem.session_id == session_id).order_by(SessionItem.position).all()
     return items
 
@@ -314,6 +320,7 @@ def add_item(
     item = db.query(SessionItem).options(
         joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionItem.song).joinedload(Song.playback_settings),
     ).filter(SessionItem.id == item.id).first()
     return item
 
@@ -352,6 +359,7 @@ def update_item(
     item = db.query(SessionItem).options(
         joinedload(SessionItem.song).joinedload(Song.categories),
         joinedload(SessionItem.song).joinedload(Song.stems),
+        joinedload(SessionItem.song).joinedload(Song.playback_settings),
     ).filter(SessionItem.id == item.id).first()
     return item
 
@@ -398,6 +406,55 @@ def reorder_items(
             item.position = position
     db.commit()
     return {"ok": True}
+
+
+# --- Player helpers ---
+
+class MarkPlayedRequest(PydanticBase):
+    song_id: int
+    is_played: bool = True
+
+
+@router.post("/{session_id}/mark-played")
+def mark_song_played(
+    session_id: int,
+    data: MarkPlayedRequest,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    items = db.query(SessionItem).filter(
+        SessionItem.session_id == session_id,
+        SessionItem.song_id == data.song_id,
+    ).all()
+    for item in items:
+        item.is_played = data.is_played
+        item.played_at = datetime.utcnow() if data.is_played else None
+    db.commit()
+    return {"ok": True, "updated": len(items)}
+
+
+@router.post("/{session_id}/reset-played")
+def reset_all_played(
+    session_id: int,
+    db: Session = Depends(get_db),
+    x_session_password: Optional[str] = Header(None),
+):
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    _check_password(session, x_session_password)
+
+    items = db.query(SessionItem).filter(SessionItem.session_id == session_id).all()
+    for item in items:
+        item.is_played = False
+        item.played_at = None
+    db.commit()
+    return {"ok": True, "reset": len(items)}
 
 
 # --- Folders ---

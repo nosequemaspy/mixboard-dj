@@ -41,6 +41,6 @@ def _migrate(engine_):
 
 
 def init_db():
-    from models import song, category, playlist, stem, edit, task, settings, session  # noqa: F401
+    from models import song, category, playlist, stem, edit, task, settings, session, playback_settings  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _migrate(engine)

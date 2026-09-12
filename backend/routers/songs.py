@@ -13,7 +13,8 @@ from models.song import Song, song_categories
 from models.stem import Stem
 from models.edit import EditedSong
 from models.category import Category
-from schemas.song import SongResponse, SongListResponse, SongUpdate
+from models.playback_settings import SongPlaybackSettings
+from schemas.song import SongResponse, SongListResponse, SongUpdate, PlaybackSettingsResponse, PlaybackSettingsUpdate
 from services.analysis import analyze_audio_fast
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def list_songs(
     sort_dir: str = Query("desc", description="asc or desc"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Song).options(joinedload(Song.categories), joinedload(Song.stems))
+    query = db.query(Song).options(joinedload(Song.categories), joinedload(Song.stems), joinedload(Song.playback_settings))
 
     if search:
         pattern = f"%{search}%"
@@ -59,7 +60,7 @@ def list_songs(
 @router.get("/{song_id}", response_model=SongResponse)
 def get_song(song_id: int, db: Session = Depends(get_db)):
     song = db.query(Song).options(
-        joinedload(Song.categories), joinedload(Song.stems)
+        joinedload(Song.categories), joinedload(Song.stems), joinedload(Song.playback_settings)
     ).filter(Song.id == song_id).first()
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
@@ -134,7 +135,7 @@ async def upload_song(
 @router.put("/{song_id}", response_model=SongResponse)
 def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
     song = db.query(Song).options(
-        joinedload(Song.categories), joinedload(Song.stems)
+        joinedload(Song.categories), joinedload(Song.stems), joinedload(Song.playback_settings)
     ).filter(Song.id == song_id).first()
     if not song:
         raise HTTPException(status_code=404, detail="Song not found")
@@ -176,6 +177,42 @@ async def reanalyze_songs(db: Session = Depends(get_db)):
             logger.warning(f"Failed to analyze song {song.id}: {e}")
     db.commit()
     return {"analyzed": len(songs), "updated": updated}
+
+
+@router.get("/{song_id}/playback-settings", response_model=PlaybackSettingsResponse)
+def get_playback_settings(song_id: int, db: Session = Depends(get_db)):
+    song = db.query(Song).filter(Song.id == song_id).first()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    settings = db.query(SongPlaybackSettings).filter(SongPlaybackSettings.song_id == song_id).first()
+    if not settings:
+        # Return defaults
+        settings = SongPlaybackSettings(id=0, song_id=song_id)
+    return settings
+
+
+@router.put("/{song_id}/playback-settings", response_model=PlaybackSettingsResponse)
+def update_playback_settings(song_id: int, data: PlaybackSettingsUpdate, db: Session = Depends(get_db)):
+    song = db.query(Song).filter(Song.id == song_id).first()
+    if not song:
+        raise HTTPException(status_code=404, detail="Song not found")
+    settings = db.query(SongPlaybackSettings).filter(SongPlaybackSettings.song_id == song_id).first()
+    if not settings:
+        settings = SongPlaybackSettings(song_id=song_id)
+        db.add(settings)
+    if data.start_time is not None:
+        settings.start_time = data.start_time
+    if data.end_time is not None:
+        settings.end_time = data.end_time
+    if data.transition_duration is not None:
+        settings.transition_duration = data.transition_duration
+    if data.transition_type is not None:
+        settings.transition_type = data.transition_type
+    if data.playback_speed is not None:
+        settings.playback_speed = data.playback_speed
+    db.commit()
+    db.refresh(settings)
+    return settings
 
 
 @router.delete("/{song_id}")
