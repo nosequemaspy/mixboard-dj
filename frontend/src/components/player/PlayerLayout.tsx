@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { usePlaybackEngine } from '../../hooks/usePlaybackEngine';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useRemoteControl } from '../../hooks/useRemoteControl';
 import { NowPlaying } from './NowPlaying';
 import { PlayerControls } from './PlayerControls';
 import { PlayerPlaylist } from './PlayerPlaylist';
@@ -18,6 +19,9 @@ export function PlayerLayout() {
   const activeSession = useSessionStore(s => s.activeSession);
   const playerSessionId = usePlayerStore(s => s.sessionId);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
+
+  // Remote control: this is the HOST (plays audio)
+  useRemoteControl(playerSessionId, 'host');
 
   // Fetch sessions on mount
   useEffect(() => {

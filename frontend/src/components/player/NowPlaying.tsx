@@ -13,7 +13,6 @@ export function NowPlaying() {
   const currentTime = usePlayerStore(s => s.currentTime);
   const duration = usePlayerStore(s => s.duration);
   const sessionItems = usePlayerStore(s => s.sessionItems);
-  const isPlaying = usePlayerStore(s => s.isPlaying);
 
   const currentItem = sessionItems.find(i => i.song_id === currentSongId);
   const song = currentItem?.song;

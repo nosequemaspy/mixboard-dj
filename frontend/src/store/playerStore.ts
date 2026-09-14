@@ -175,7 +175,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   getPreviousItem: () => {
-    const { currentItemId, playedSongIds, shuffleEnabled, shuffledOrder } = get();
+    const { currentItemId, shuffleEnabled, shuffledOrder } = get();
     const filtered = get().getFilteredItems();
     if (filtered.length === 0) return null;
 

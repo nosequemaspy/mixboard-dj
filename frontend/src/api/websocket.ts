@@ -6,6 +6,7 @@ class WSClient {
   private reconnectTimer: number | null = null;
   private reconnectAttempts = 0;
   private maxReconnectDelay = 30000;
+  clientId: string | null = null;
 
   connect() {
     // Clear any pending reconnect
@@ -36,6 +37,9 @@ class WSClient {
     this.ws.onmessage = (event) => {
       try {
         const { event: eventName, data } = JSON.parse(event.data);
+        if (eventName === 'client_id') {
+          this.clientId = data.client_id;
+        }
         const handlers = this.handlers.get(eventName);
         if (handlers) {
           handlers.forEach(handler => handler(data));
@@ -60,12 +64,22 @@ class WSClient {
     this.reconnectTimer = window.setTimeout(() => this.connect(), delay);
   }
 
+  send(event: string, data: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ event, data }));
+    }
+  }
+
   on(event: string, handler: EventHandler) {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Set());
     }
     this.handlers.get(event)!.add(handler);
     return () => this.handlers.get(event)?.delete(handler);
+  }
+
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
   disconnect() {

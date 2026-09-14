@@ -1,8 +1,6 @@
 import type { DeckId } from '../types';
 import type { SessionItem } from '../types';
 import { AudioEngine } from './AudioEngine';
-import { api } from '../api/http';
-
 type TransitionType = 'smooth' | 'sharp' | 'linear' | 'cut';
 
 interface SongPlaybackConfig {
@@ -63,7 +61,7 @@ export class PlaybackEngine {
     this.active = true;
     // Take over AudioEngine callbacks
     this.engine.setCallbacks(
-      (_deckId: DeckId, time: number) => {
+      (_deckId: DeckId, _time: number) => {
         // We handle time monitoring ourselves
       },
       (deckId: DeckId) => {

@@ -4,7 +4,6 @@ import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
 export function PlayerControls() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const shuffleEnabled = usePlayerStore(s => s.shuffleEnabled);
-  const currentSongId = usePlayerStore(s => s.currentSongId);
   const speed = usePlayerStore(s => s.getCurrentPlaybackSpeed());
 
   const handlePlayPause = () => {

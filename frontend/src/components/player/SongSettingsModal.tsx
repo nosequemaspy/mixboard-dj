@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { SessionItem, PlaybackSettings } from '../../types';
+import type { SessionItem } from '../../types';
 import { api } from '../../api/http';
 
 function formatTime(seconds: number): string {

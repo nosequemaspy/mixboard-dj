@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { QueueSection } from './QueueSection';
 import { SongSettingsModal } from './SongSettingsModal';
@@ -11,14 +11,81 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatDuration(seconds: number): string {
+  if (!seconds || !isFinite(seconds)) return '0:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export function PlayerPlaylist() {
   const activeTagId = usePlayerStore(s => s.activeTagId);
   const folders = usePlayerStore(s => s.folders);
   const currentItemId = usePlayerStore(s => s.currentItemId);
   const playedSongIds = usePlayerStore(s => s.playedSongIds);
+  const currentTime = usePlayerStore(s => s.currentTime);
   const [settingsItem, setSettingsItem] = useState<SessionItem | null>(null);
+  const [timeUntilItemId, setTimeUntilItemId] = useState<number | null>(null);
 
   const filteredItems = usePlayerStore.getState().getFilteredItems();
+
+  // Calculate total playlist time and time until selected song
+  const { totalDuration, totalRemaining, timeUntilSong } = useMemo(() => {
+    let total = 0;
+    let remaining = 0;
+    let timeUntil = 0;
+    let foundCurrent = false;
+    let foundTarget = false;
+    const currentIdx = filteredItems.findIndex(i => i.id === currentItemId);
+
+    for (let i = 0; i < filteredItems.length; i++) {
+      const item = filteredItems[i];
+      const ps = item.song?.playback_settings;
+      const start = ps?.start_time ?? 0;
+      const end = ps?.end_time ?? item.song.duration_seconds;
+      const effectiveDuration = Math.max(0, end - start);
+      const speed = ps?.playback_speed ?? 1.0;
+      const adjustedDuration = speed > 0 ? effectiveDuration / speed : effectiveDuration;
+
+      total += adjustedDuration;
+
+      // Calculate remaining time from current position
+      if (i === currentIdx) {
+        foundCurrent = true;
+        // Add remaining time of current song
+        const currentRemaining = Math.max(0, adjustedDuration - (currentTime - start) / (speed > 0 ? speed : 1));
+        remaining += currentRemaining;
+      } else if (foundCurrent && !playedSongIds.has(item.song_id)) {
+        remaining += adjustedDuration;
+      }
+
+      // Calculate time until target song
+      if (timeUntilItemId !== null) {
+        if (item.id === timeUntilItemId) {
+          foundTarget = true;
+        } else if (!foundTarget) {
+          if (i === currentIdx) {
+            const currentRemaining = Math.max(0, adjustedDuration - (currentTime - start) / (speed > 0 ? speed : 1));
+            timeUntil += currentRemaining;
+          } else if (i > currentIdx && !playedSongIds.has(item.song_id)) {
+            timeUntil += adjustedDuration;
+          }
+        }
+      }
+    }
+
+    return {
+      totalDuration: total,
+      totalRemaining: remaining,
+      timeUntilSong: timeUntilItemId !== null ? timeUntil : null,
+    };
+  }, [filteredItems, currentItemId, currentTime, playedSongIds, timeUntilItemId]);
+
+  const handleTimeUntilToggle = (itemId: number) => {
+    setTimeUntilItemId(prev => prev === itemId ? null : itemId);
+  };
 
   const handleTagClick = (tagId: number | null) => {
     usePlayerStore.getState().setActiveTag(tagId);
@@ -73,6 +140,19 @@ export function PlayerPlaylist() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Playlist time info */}
+      <div className="px-4 py-1.5 border-b border-border flex items-center gap-3 text-xs text-text-muted font-mono flex-shrink-0 flex-wrap">
+        <span title="Duración total">Total: {formatDuration(totalDuration)}</span>
+        {currentItemId && (
+          <span title="Tiempo restante">Restante: {formatDuration(totalRemaining)}</span>
+        )}
+        {timeUntilSong !== null && timeUntilItemId !== null && (
+          <span className="text-accent" title="Tiempo hasta canción seleccionada">
+            Hasta #{filteredItems.findIndex(i => i.id === timeUntilItemId) + 1}: {formatDuration(timeUntilSong)}
+          </span>
+        )}
       </div>
 
       {/* Queue */}
@@ -148,6 +228,22 @@ export function PlayerPlaylist() {
                   <span className={`text-xs font-mono flex-shrink-0 ${isPlayed ? 'text-text-muted/40' : 'text-text-muted'}`}>
                     {formatTime(item.song.duration_seconds)}
                   </span>
+
+                  {/* Time until this song */}
+                  {!isCurrent && (
+                    <button
+                      onClick={() => handleTimeUntilToggle(item.id)}
+                      className={`p-2 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center flex-shrink-0 ${
+                        timeUntilItemId === item.id ? 'text-accent' : 'text-text-muted hover:text-accent'
+                      }`}
+                      title="Ver tiempo hasta esta cancion"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                    </button>
+                  )}
 
                   {/* Add to queue */}
                   <button

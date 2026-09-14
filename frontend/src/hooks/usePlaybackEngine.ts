@@ -17,7 +17,6 @@ export function usePlaybackEngine() {
 
   useEffect(() => {
     const engine = engineRef.current;
-    const store = usePlayerStore.getState();
 
     engine.setCallbacks({
       onTimeUpdate: (time: number) => {

@@ -3,6 +3,7 @@ import { Routes, Route, useParams } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { PublicSessionPage } from './components/public/PublicSessionPage';
 import { PlayerLayout } from './components/player/PlayerLayout';
+import { RemoteLayout } from './components/player/RemoteLayout';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useMidi } from './hooks/useMidi';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -89,6 +90,7 @@ function App() {
     <Routes>
       <Route path="/s/:shareCode" element={<PublicSessionRoute />} />
       <Route path="/player" element={<PlayerLayout />} />
+      <Route path="/remote" element={<RemoteLayout />} />
       <Route path="/*" element={<DJApp />} />
     </Routes>
   );
