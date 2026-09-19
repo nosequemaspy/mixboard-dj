@@ -65,49 +65,57 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
       ref={trackRef}
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
-      className="relative w-10 cursor-pointer select-none"
+      className="relative w-14 cursor-pointer select-none"
       style={{ touchAction: 'none', height: '100%' }}
     >
-      {/* Track background */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-3 rounded-full overflow-hidden bg-bg-tertiary">
-        {/* Fill */}
+      {/* Track background — wide bar showing full range */}
+      <div className="absolute left-1/2 -translate-x-1/2 top-2 bottom-2 w-5 rounded-lg overflow-hidden bg-bg-tertiary border border-border/50">
+        {/* Tick marks for visual reference */}
+        <div className="absolute inset-0 flex flex-col justify-between py-1 pointer-events-none">
+          {[100, 75, 50, 25, 0].map(tick => (
+            <div key={tick} className="w-full flex items-center">
+              <div className="w-full h-px bg-text-muted/15" />
+            </div>
+          ))}
+        </div>
+        {/* Fill — colored portion showing current level */}
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-full"
+          className="absolute bottom-0 left-0 right-0 rounded-b-lg transition-[height] duration-75"
           style={{
             height: `${percent}%`,
-            backgroundColor: color,
-            opacity: dragging ? 1 : 0.8,
+            background: `linear-gradient(to top, ${color}, ${color}cc)`,
+            opacity: dragging ? 1 : 0.85,
           }}
         />
       </div>
 
       {/* Thumb */}
       <div
-        className="absolute left-1/2 pointer-events-none"
+        className="absolute left-1/2 pointer-events-none z-10"
         style={{ bottom: `${percent}%`, transform: `translateX(-50%) translateY(50%)` }}
       >
         <div
-          className={`w-9 h-5 rounded-md border-2 transition-all duration-150 ${
+          className={`w-12 h-6 rounded-md border-2 transition-all duration-100 ${
             dragging
-              ? 'bg-text-primary border-accent shadow-lg'
+              ? 'bg-text-primary border-accent shadow-lg scale-105'
               : 'bg-bg-tertiary border-border hover:border-text-muted'
           }`}
           style={{
-            boxShadow: dragging ? `0 0 12px ${color}90` : '0 1px 3px rgba(0,0,0,0.3)',
+            boxShadow: dragging ? `0 0 14px ${color}90` : '0 1px 4px rgba(0,0,0,0.4)',
           }}
         >
           {/* Grip lines */}
-          <div className="flex flex-col items-center justify-center h-full gap-0.5">
-            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
-            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
-            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
+          <div className="flex flex-col items-center justify-center h-full gap-[3px]">
+            <div className="w-6 h-px bg-text-muted/60 rounded-full" />
+            <div className="w-6 h-px bg-text-muted/60 rounded-full" />
+            <div className="w-6 h-px bg-text-muted/60 rounded-full" />
           </div>
         </div>
       </div>
 
       {/* Value label */}
       {label && (
-        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-text-muted font-mono tabular-nums whitespace-nowrap">
+        <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted font-mono tabular-nums whitespace-nowrap">
           {Math.round(value * 100)}
         </div>
       )}
