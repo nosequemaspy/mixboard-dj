@@ -45,7 +45,7 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
     <div className="relative" ref={ref}>
       <button
         onClick={e => { e.stopPropagation(); setOpen(!open); }}
-        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 ${
+        className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors gap-1 ${
           currentFolder
             ? 'hover:brightness-125'
             : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
@@ -53,7 +53,7 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
         style={currentFolder ? { backgroundColor: `${currentFolder.color}25`, color: currentFolder.color } : undefined}
         title="Asignar etiqueta"
       >
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
         </svg>
       </button>
@@ -287,25 +287,46 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
       <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
-      <div className="flex gap-1 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
+      <div className="flex gap-1.5 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
         {folders.length > 0 && (
           <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
         )}
         <button
           onClick={e => { e.stopPropagation(); setSeparator(item.separator_text ? null : 'Separador'); }}
-          className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
+          className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
           title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
         >
-          ―
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <line x1="3" y1="5" x2="13" y2="5" />
+            <line x1="3" y1="8" x2="13" y2="8" />
+            <line x1="3" y1="11" x2="13" y2="11" />
+          </svg>
         </button>
-        <button onClick={markPlayed} className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}>
+        <button
+          onClick={markPlayed}
+          className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}
+          title={item.is_played ? 'Marcar como no reproducida' : 'Marcar como reproducida'}
+        >
           {item.is_played ? (
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
             </svg>
-          ) : '\u25CB'}
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <circle cx="8" cy="8" r="5.5" />
+            </svg>
+          )}
         </button>
-        <button onClick={removeItem} className="text-[10px] px-1.5 py-0.5 rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors">&times;</button>
+        <button
+          onClick={removeItem}
+          className="text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors"
+          title="Eliminar de la sesion"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <line x1="4" y1="4" x2="12" y2="12" />
+            <line x1="12" y1="4" x2="4" y2="12" />
+          </svg>
+        </button>
       </div>
     </div>
     </div>

@@ -5,9 +5,11 @@ import { useSessionStore } from '../../store/sessionStore';
 import { usePlaybackEngine } from '../../hooks/usePlaybackEngine';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRemoteControl } from '../../hooks/useRemoteControl';
+import { useMediaSession } from '../../hooks/useMediaSession';
 import { NowPlaying } from './NowPlaying';
 import { PlayerControls } from './PlayerControls';
 import { PlayerPlaylist } from './PlayerPlaylist';
+import { InstallPrompt } from '../shared/InstallPrompt';
 
 export function PlayerLayout() {
   const navigate = useNavigate();
@@ -22,6 +24,7 @@ export function PlayerLayout() {
 
   // Remote control: this is the HOST (plays audio)
   useRemoteControl(playerSessionId, 'host');
+  useMediaSession();
 
   // Fetch sessions on mount
   useEffect(() => {
@@ -128,6 +131,8 @@ export function PlayerLayout() {
           </div>
         </div>
       )}
+
+      <InstallPrompt />
     </div>
   );
 }

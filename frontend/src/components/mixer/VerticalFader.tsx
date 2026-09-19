@@ -56,22 +56,27 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
 
   const percent = value * 100;
 
+  const handleDoubleClick = useCallback(() => {
+    onChangeRef.current(1.0);
+  }, []);
+
   return (
     <div
       ref={trackRef}
       onPointerDown={handlePointerDown}
-      className="relative w-8 cursor-pointer select-none"
+      onDoubleClick={handleDoubleClick}
+      className="relative w-10 cursor-pointer select-none"
       style={{ touchAction: 'none', height: '100%' }}
     >
       {/* Track background */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-2 rounded-full overflow-hidden bg-bg-tertiary">
+      <div className="absolute left-1/2 -translate-x-1/2 top-1 bottom-1 w-3 rounded-full overflow-hidden bg-bg-tertiary">
         {/* Fill */}
         <div
           className="absolute bottom-0 left-0 right-0 rounded-full"
           style={{
             height: `${percent}%`,
             backgroundColor: color,
-            opacity: dragging ? 1 : 0.7,
+            opacity: dragging ? 1 : 0.8,
           }}
         />
       </div>
@@ -82,19 +87,20 @@ export function VerticalFader({ value, onChange, color = '#6366f1', label }: Ver
         style={{ bottom: `${percent}%`, transform: `translateX(-50%) translateY(50%)` }}
       >
         <div
-          className={`w-7 h-4 rounded-sm border-2 transition-colors ${
+          className={`w-9 h-5 rounded-md border-2 transition-all duration-150 ${
             dragging
               ? 'bg-text-primary border-accent shadow-lg'
               : 'bg-bg-tertiary border-border hover:border-text-muted'
           }`}
           style={{
-            boxShadow: dragging ? `0 0 8px ${color}80` : '0 1px 3px rgba(0,0,0,0.3)',
+            boxShadow: dragging ? `0 0 12px ${color}90` : '0 1px 3px rgba(0,0,0,0.3)',
           }}
         >
           {/* Grip lines */}
           <div className="flex flex-col items-center justify-center h-full gap-0.5">
-            <div className="w-3.5 h-px bg-text-muted/50 rounded-full" />
-            <div className="w-3.5 h-px bg-text-muted/50 rounded-full" />
+            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
+            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
+            <div className="w-5 h-px bg-text-muted/50 rounded-full" />
           </div>
         </div>
       </div>

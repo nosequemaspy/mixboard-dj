@@ -57,10 +57,15 @@ export function Crossfader({ value, onChange }: CrossfaderProps) {
 
   const percent = valueToPercent(value);
 
+  const handleDoubleClick = useCallback(() => {
+    onChangeRef.current(0);
+  }, []);
+
   return (
     <div
       ref={trackRef}
       onPointerDown={handlePointerDown}
+      onDoubleClick={handleDoubleClick}
       className="relative h-10 cursor-pointer select-none"
       style={{ touchAction: 'none' }}
     >

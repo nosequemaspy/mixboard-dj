@@ -14,13 +14,19 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
   const roleRef = useRef(role);
   roleRef.current = role;
 
-  // Join/leave session room
+  // Join/leave session room (including on reconnect)
   useEffect(() => {
     if (!sessionId) return;
 
     wsClient.send('join_session', { session_id: sessionId, role });
 
+    // Rejoin room if WebSocket reconnects (network blip)
+    const unsubReconnect = wsClient.on('_reconnect', () => {
+      wsClient.send('join_session', { session_id: sessionId, role });
+    });
+
     return () => {
+      unsubReconnect();
       wsClient.send('leave_session', {});
     };
   }, [sessionId, role]);

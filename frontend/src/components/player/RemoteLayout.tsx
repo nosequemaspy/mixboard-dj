@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRemoteControl } from '../../hooks/useRemoteControl';
+import { InstallPrompt } from '../shared/InstallPrompt';
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
   const m = Math.floor(seconds / 60);
@@ -343,6 +344,8 @@ export function RemoteLayout() {
           </div>
         </div>
       )}
+
+      <InstallPrompt />
     </div>
   );
 }

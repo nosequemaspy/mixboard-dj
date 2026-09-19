@@ -1,5 +1,9 @@
 import { usePlayerStore } from '../../store/playerStore';
+import { useSessionStore } from '../../store/sessionStore';
 import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
+import { api } from '../../api/http';
+
+const SPEED_PRESETS = [0.75, 1.0, 1.25, 1.5];
 
 export function PlayerControls() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
@@ -37,6 +41,43 @@ export function PlayerControls() {
 
   const handleShuffle = () => {
     usePlayerStore.getState().toggleShuffle();
+  };
+
+  const handleSpeedCycle = async () => {
+    const store = usePlayerStore.getState();
+    const currentSongId = store.currentSongId;
+    if (!currentSongId) return;
+
+    const currentItem = store.sessionItems.find(i => i.song_id === currentSongId);
+    if (!currentItem) return;
+
+    // Find next preset
+    const currentIdx = SPEED_PRESETS.indexOf(speed);
+    const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % SPEED_PRESETS.length : 1; // default to 1.0 if not found
+    const newSpeed = SPEED_PRESETS[nextIdx];
+
+    // Apply immediately to playback engine
+    getPlaybackEngine().setSpeed(newSpeed);
+
+    // Save to API preserving existing settings
+    const ps = currentItem.song.playback_settings;
+    try {
+      await api.updatePlaybackSettings(currentItem.song.id, {
+        start_time: ps?.start_time ?? 0,
+        end_time: ps?.end_time ?? null,
+        transition_duration: ps?.transition_duration ?? 4,
+        transition_type: ps?.transition_type ?? 'smooth',
+        playback_speed: newSpeed,
+      });
+      // Sync session data to update local store
+      const sessionId = store.sessionId;
+      if (sessionId) {
+        await useSessionStore.getState().fetchActiveSession(sessionId);
+        usePlayerStore.getState().syncFromSessionStore();
+      }
+    } catch (err) {
+      console.error('Failed to save speed:', err);
+    }
   };
 
   return (
@@ -99,14 +140,20 @@ export function PlayerControls() {
         </svg>
       </button>
 
-      {/* Speed indicator */}
-      <div className="min-w-[48px] min-h-[48px] flex items-center justify-center">
-        {speed !== 1.0 && (
-          <span className="text-xs font-mono text-accent bg-accent/10 px-2 py-1 rounded">
-            {speed.toFixed(1)}x
-          </span>
-        )}
-      </div>
+      {/* Speed button */}
+      <button
+        onClick={handleSpeedCycle}
+        className={`p-3 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
+          speed !== 1.0
+            ? 'text-accent bg-accent/15'
+            : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+        }`}
+        title={`Velocidad: ${speed.toFixed(2)}x — Click para cambiar`}
+      >
+        <span className="text-xs font-mono font-bold">
+          {speed === 1.0 ? '1x' : `${speed.toFixed(2).replace(/0$/, '')}x`}
+        </span>
+      </button>
     </div>
   );
 }

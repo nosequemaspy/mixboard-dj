@@ -276,6 +276,10 @@ export class PlaybackEngine {
     this.isTransitioning = false;
   }
 
+  setSpeed(speed: number) {
+    this.engine.setTempo(this.activeDeck, speed);
+  }
+
   getCurrentTime(): number {
     return this.engine.getCurrentTime(this.activeDeck);
   }
