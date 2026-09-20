@@ -47,7 +47,7 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
         activeTagId: state.activeTagId,
         shuffleEnabled: state.shuffleEnabled,
         playedSongIds: Array.from(state.playedSongIds),
-        queue: state.queue.map(q => q.id),
+        queue: state.queue.map(q => q.item.id),
       });
     };
 

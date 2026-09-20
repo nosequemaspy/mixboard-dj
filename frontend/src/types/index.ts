@@ -217,6 +217,11 @@ export interface Suggestion {
   reviewed_at: string | null;
 }
 
+export interface QueueEntry {
+  item: SessionItem;
+  source: 'manual';
+}
+
 export type CrossfaderCurve = 'smooth' | 'sharp' | 'linear';
 
 export interface AudioSettings {

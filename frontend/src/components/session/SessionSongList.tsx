@@ -170,7 +170,7 @@ function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (te
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -193,6 +193,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   isEditingTransition?: boolean;
   restrictedMode?: boolean;
   nextItem?: SessionItem | null;
+  isInQueue?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
 
@@ -234,15 +235,32 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
     }
   };
 
+  const hideEditControls = playerActive && restrictedMode;
+
   return (
     <div ref={setNodeRef} style={style}>
       {/* Separator banner above this song */}
-      {item.separator_text && (
+      {item.separator_text && !hideEditControls && (
         <SeparatorBanner
           text={item.separator_text}
           onEdit={text => setSeparator(text)}
           onRemove={() => setSeparator(null)}
         />
+      )}
+      {/* Read-only separator display in restricted mode */}
+      {item.separator_text && hideEditControls && (
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 border-b border-cyan-400/20"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.06) 20%, rgba(34,211,238,0.06) 80%, transparent)' }}
+        >
+          <div className="flex-1 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider whitespace-nowrap drop-shadow-[0_0_6px_rgba(34,211,238,0.5)]">
+              {item.separator_text}
+            </span>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+          </div>
+        </div>
       )}
     <div
       onClick={handleRowClick}
@@ -252,48 +270,54 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         item.is_played && !isNext ? 'opacity-40' : isNext ? 'bg-accent/5 border-l-2 border-l-accent/40' : 'hover:bg-bg-hover'
       }`}
     >
-      {/* Selection checkbox */}
-      <button
-        onClick={e => { e.stopPropagation(); onToggleSelect(item.id); }}
-        className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-          isSelected ? 'bg-accent border-accent' : 'border-border hover:border-text-muted'
-        }`}
-      >
-        {isSelected && (
-          <svg width="8" height="8" viewBox="0 0 16 16" fill="white">
-            <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-          </svg>
-        )}
-      </button>
-
-      {/* Up/Down arrows */}
-      <div className="flex flex-col gap-0 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
+      {/* Selection checkbox - hidden in restricted mode */}
+      {!hideEditControls && (
         <button
-          onClick={e => { e.stopPropagation(); onMoveUp(item.id); }}
-          disabled={isFirst}
-          className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
-          title="Mover arriba"
+          onClick={e => { e.stopPropagation(); onToggleSelect(item.id); }}
+          className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+            isSelected ? 'bg-accent border-accent' : 'border-border hover:border-text-muted'
+          }`}
         >
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-            <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          {isSelected && (
+            <svg width="8" height="8" viewBox="0 0 16 16" fill="white">
+              <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+            </svg>
+          )}
         </button>
-        <button
-          onClick={e => { e.stopPropagation(); onMoveDown(item.id); }}
-          disabled={isLast}
-          className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
-          title="Mover abajo"
-        >
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      </div>
+      )}
 
-      {/* Drag handle */}
-      <div {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-primary text-xs" onClick={e => e.stopPropagation()}>
-        :::
-      </div>
+      {/* Up/Down arrows - hidden in restricted mode */}
+      {!hideEditControls && (
+        <div className="flex flex-col gap-0 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
+          <button
+            onClick={e => { e.stopPropagation(); onMoveUp(item.id); }}
+            disabled={isFirst}
+            className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
+            title="Mover arriba"
+          >
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+              <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onMoveDown(item.id); }}
+            disabled={isLast}
+            className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
+            title="Mover abajo"
+          >
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Drag handle - hidden in restricted mode */}
+      {!hideEditControls && (
+        <div {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-primary text-xs" onClick={e => e.stopPropagation()}>
+          :::
+        </div>
+      )}
       <span className="text-xs text-text-muted w-5 text-center tabular-nums">
         {isCurrent ? (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
@@ -315,7 +339,21 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         <span className={`text-sm truncate block leading-tight ${isCurrent ? 'text-accent font-medium' : 'text-text-primary'} ${item.is_played && !isCurrent ? 'line-through' : ''}`}>{item.song.title}</span>
         <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
+      {/* COLA badge for queued songs */}
+      {isInQueue && (
+        <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 shrink-0">
+          COLA
+        </span>
+      )}
       <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
+      {/* Played indicator (visible in restricted mode) */}
+      {hideEditControls && item.is_played && (
+        <span className="text-success shrink-0" title="Reproducida">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+          </svg>
+        </span>
+      )}
       {/* Player action buttons */}
       {playerActive && (
         <div className="flex gap-1 flex-shrink-0">
@@ -354,47 +392,50 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
           )}
         </div>
       )}
-      <div className="flex gap-1.5 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
-        {folders.length > 0 && (
-          <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
-        )}
-        <button
-          onClick={e => { e.stopPropagation(); setSeparator(item.separator_text ? null : 'Separador'); }}
-          className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
-          title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <line x1="3" y1="5" x2="13" y2="5" />
-            <line x1="3" y1="8" x2="13" y2="8" />
-            <line x1="3" y1="11" x2="13" y2="11" />
-          </svg>
-        </button>
-        <button
-          onClick={markPlayed}
-          className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}
-          title={item.is_played ? 'Marcar como no reproducida' : 'Marcar como reproducida'}
-        >
-          {item.is_played ? (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
-              <circle cx="8" cy="8" r="5.5" />
-            </svg>
+      {/* Edit controls - hidden in restricted mode */}
+      {!hideEditControls && (
+        <div className="flex gap-1.5 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
+          {folders.length > 0 && (
+            <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
           )}
-        </button>
-        <button
-          onClick={removeItem}
-          className="text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors"
-          title="Eliminar de la sesion"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <line x1="4" y1="4" x2="12" y2="12" />
-            <line x1="12" y1="4" x2="4" y2="12" />
-          </svg>
-        </button>
-      </div>
+          <button
+            onClick={e => { e.stopPropagation(); setSeparator(item.separator_text ? null : 'Separador'); }}
+            className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
+            title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="3" y1="5" x2="13" y2="5" />
+              <line x1="3" y1="8" x2="13" y2="8" />
+              <line x1="3" y1="11" x2="13" y2="11" />
+            </svg>
+          </button>
+          <button
+            onClick={markPlayed}
+            className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.is_played ? 'bg-success/20 text-success' : 'bg-bg-tertiary text-text-muted hover:text-success'}`}
+            title={item.is_played ? 'Marcar como no reproducida' : 'Marcar como reproducida'}
+          >
+            {item.is_played ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+                <circle cx="8" cy="8" r="5.5" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={removeItem}
+            className="text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded bg-danger/20 text-danger hover:bg-danger/30 transition-colors"
+            title="Eliminar de la sesion"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="4" y1="4" x2="12" y2="12" />
+              <line x1="12" y1="4" x2="4" y2="12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
       {/* Inline transition editor */}
       {isEditingTransition && (
@@ -426,6 +467,9 @@ export function SessionSongList({
 
   const currentItemId = usePlayerStore(s => s.currentItemId);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
+  const queue = usePlayerStore(s => s.queue);
+
+  const queuedSongIds = useMemo(() => new Set(queue.map(e => e.item.song_id)), [queue]);
 
   const loadSong = useDeckStore(s => s.loadSong);
   const setDuration = useDeckStore(s => s.setDuration);
@@ -660,6 +704,7 @@ export function SessionSongList({
                 isEditingTransition={playerActive ? quickEditItemId === item.id : false}
                 restrictedMode={playerActive ? restrictedMode : false}
                 nextItem={filtered[idx + 1] ?? null}
+                isInQueue={playerActive ? queuedSongIds.has(item.song_id) : false}
               />
             ))}
           </SortableContext>

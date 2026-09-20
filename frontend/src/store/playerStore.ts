@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SessionItem, SessionFolder } from '../types';
+import type { SessionItem, SessionFolder, QueueEntry } from '../types';
 import { getEffectivePlaybackSettings } from '../types';
 import { api } from '../api/http';
 import { useSessionStore } from './sessionStore';
@@ -22,7 +22,7 @@ interface PlayerStore {
   mainPlaylistPosition: number; // saved position when entering a tag
 
   // Queue
-  queue: SessionItem[];
+  queue: QueueEntry[];
 
   // Shuffle
   shuffleEnabled: boolean;
@@ -171,7 +171,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     // Queue takes priority
     if (queue.length > 0) {
-      return queue[0];
+      return queue[0].item;
     }
 
     if (filtered.length === 0) return null;
@@ -235,7 +235,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     // Consume from queue first
     if (queue.length > 0) {
-      const next = queue[0];
+      const next = queue[0].item;
       set({ queue: queue.slice(1) });
       state.playItem(next);
       return;
@@ -268,7 +268,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   setDuration: (duration) => set({ duration }),
 
   addToQueue: (item) => {
-    set(state => ({ queue: [...state.queue, item] }));
+    set(state => ({ queue: [...state.queue, { item, source: 'manual' }] }));
   },
 
   removeFromQueue: (index) => {

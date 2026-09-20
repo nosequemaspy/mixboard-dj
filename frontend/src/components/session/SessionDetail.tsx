@@ -7,6 +7,7 @@ import { SessionSongList } from './SessionSongList';
 import { TagSidebar } from './FolderChips';
 import { SuggestionReview } from './SuggestionReview';
 import { NowPlaying } from '../player/NowPlaying';
+import { DeckABView } from '../player/DeckABView';
 import { PlayerControls } from '../player/PlayerControls';
 import { QueueSection } from '../player/QueueSection';
 import { usePlayerStore } from '../../store/playerStore';
@@ -303,7 +304,7 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
       {playerActive && (
         <>
           <div className="flex-shrink-0 border-b border-border">
-            <SessionNowPlaying />
+            {restrictedMode ? <DeckABView /> : <SessionNowPlaying />}
           </div>
           <div className="flex-shrink-0 border-b border-border bg-bg-secondary">
             <PlayerControls />
