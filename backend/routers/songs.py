@@ -13,6 +13,7 @@ from models.song import Song, song_categories
 from models.stem import Stem
 from models.edit import EditedSong
 from models.category import Category
+from models.session import SessionItem
 from models.playback_settings import SongPlaybackSettings
 from schemas.song import SongResponse, SongListResponse, SongUpdate, PlaybackSettingsResponse, PlaybackSettingsUpdate
 from services.analysis import analyze_audio_fast
@@ -254,6 +255,8 @@ def delete_song(song_id: int, db: Session = Depends(get_db)):
     if file_path.exists():
         file_path.unlink()
 
+    # Manually delete session items referencing this song (SQLite may not enforce CASCADE)
+    db.query(SessionItem).filter(SessionItem.song_id == song_id).delete()
     db.delete(song)
     db.commit()
     return {"ok": True}

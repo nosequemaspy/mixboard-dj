@@ -56,11 +56,11 @@ def _load_session(db: Session, session_id: int) -> SessionModel:
 
 
 def _session_to_response(session: SessionModel) -> SessionModel:
-    # Deduplicate items from joins
+    # Deduplicate items from joins, skip items whose song was deleted
     seen = set()
     unique_items = []
     for item in session.items:
-        if item.id not in seen:
+        if item.id not in seen and item.song is not None:
             seen.add(item.id)
             unique_items.append(item)
     session.items = sorted(unique_items, key=lambda i: i.position)
@@ -98,7 +98,7 @@ def list_sessions(db: Session = Depends(get_db)):
     sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
     result = []
     for s in sessions:
-        item_count = db.query(SessionItem).filter(SessionItem.session_id == s.id).count()
+        item_count = db.query(SessionItem).join(Song, SessionItem.song_id == Song.id).filter(SessionItem.session_id == s.id).count()
         pending = db.query(SessionSuggestion).filter(
             SessionSuggestion.session_id == s.id,
             SessionSuggestion.status == "pending",
@@ -254,8 +254,10 @@ def duplicate_session(
         db.flush()
         folder_map[folder.id] = new_folder.id
 
-    # Copy items
+    # Copy items (skip orphaned items whose song was deleted)
     for item in original.items:
+        if item.song is None:
+            continue
         new_item = SessionItem(
             session_id=new_session.id,
             song_id=item.song_id,

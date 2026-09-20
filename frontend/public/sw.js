@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mixboard-v1';
+const CACHE_NAME = 'mixboard-v2';
 
 // Only cache the app shell — audio streams and API calls are always network
 const APP_SHELL = [

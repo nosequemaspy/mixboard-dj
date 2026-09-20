@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from config import DATABASE_URL
@@ -6,6 +6,12 @@ from config import DATABASE_URL
 # SQLite needs check_same_thread; PostgreSQL needs pool config
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    # Enable foreign key enforcement so CASCADE deletes work in SQLite
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 else:
     engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10, pool_pre_ping=True)
 
