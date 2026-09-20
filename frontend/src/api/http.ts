@@ -133,6 +133,11 @@ export const api = {
     request<any>(`/sessions/${sessionId}/items`, { method: 'POST', body: JSON.stringify(data), headers: passwordHeaders(password) }),
   updateSessionItem: (sessionId: number, itemId: number, data: any, password?: string) =>
     request<any>(`/sessions/${sessionId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
+  updateItemPlayback: (sessionId: number, itemId: number, data: {
+    start_time?: number; end_time?: number; transition_duration?: number;
+    transition_type?: string; playback_speed?: number;
+  }, password?: string) =>
+    request<any>(`/sessions/${sessionId}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data), headers: passwordHeaders(password) }),
   removeSessionItem: (sessionId: number, itemId: number, password?: string) =>
     request<any>(`/sessions/${sessionId}/items/${itemId}`, { method: 'DELETE', headers: passwordHeaders(password) }),
   reorderSessionItems: (sessionId: number, itemIds: number[], password?: string) =>

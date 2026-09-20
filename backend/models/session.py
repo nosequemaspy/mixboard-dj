@@ -2,7 +2,7 @@ from datetime import datetime
 import secrets
 import string
 
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, String, Text, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -64,6 +64,13 @@ class SessionItem(Base):
     added_by = Column(String(200), default="dj")
     notes = Column(String(500), default="")
     separator_text = Column(String(500), nullable=True)
+
+    # Per-session playback settings (override song-level when set)
+    start_time = Column(Float, nullable=True)
+    end_time = Column(Float, nullable=True)
+    transition_duration = Column(Float, nullable=True)
+    transition_type = Column(String(20), nullable=True)
+    playback_speed = Column(Float, nullable=True)
 
     session = relationship("Session", back_populates="items")
     song = relationship("Song")

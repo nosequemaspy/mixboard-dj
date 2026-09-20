@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SessionItem, SessionFolder } from '../types';
+import { getEffectivePlaybackSettings } from '../types';
 import { api } from '../api/http';
 import { useSessionStore } from './sessionStore';
 
@@ -350,9 +351,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   getCurrentPlaybackSpeed: () => {
-    const { currentSongId, sessionItems } = get();
-    if (!currentSongId) return 1.0;
-    const item = sessionItems.find(i => i.song_id === currentSongId);
-    return item?.song?.playback_settings?.playback_speed ?? 1.0;
+    const { currentItemId, sessionItems } = get();
+    if (!currentItemId) return 1.0;
+    const item = sessionItems.find(i => i.id === currentItemId);
+    if (!item) return 1.0;
+    return getEffectivePlaybackSettings(item).playback_speed;
   },
 }));

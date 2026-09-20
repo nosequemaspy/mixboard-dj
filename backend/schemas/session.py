@@ -63,6 +63,11 @@ class SessionItemResponse(BaseModel):
     added_by: str
     notes: str
     separator_text: Optional[str] = None
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    transition_duration: Optional[float] = None
+    transition_type: Optional[str] = None
+    playback_speed: Optional[float] = None
     song: SongResponse
 
     model_config = {"from_attributes": True}
@@ -133,6 +138,11 @@ class SessionItemUpdate(BaseModel):
     notes: Optional[str] = None
     folder_id: Optional[int] = None
     separator_text: Optional[str] = None
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    transition_duration: Optional[float] = None
+    transition_type: Optional[str] = None
+    playback_speed: Optional[float] = None
 
 
 # --- Suggestions ---

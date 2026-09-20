@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { SessionData } from '../../types';
+import { getEffectivePlaybackSettings } from '../../types';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
 import { SessionSongList } from './SessionSongList';
@@ -79,11 +80,11 @@ function SessionTimeInfo({ items }: { items: SessionData['items'] }) {
 
     for (let i = 0; i < songItems.length; i++) {
       const item = songItems[i];
-      const ps = item.song?.playback_settings;
-      const start = ps?.start_time ?? 0;
-      const end = ps?.end_time ?? item.song.duration_seconds;
-      const speed = ps?.playback_speed ?? 1.0;
-      const transitionDuration = ps?.transition_duration ?? 4;
+      const eff = getEffectivePlaybackSettings(item);
+      const start = eff.start_time;
+      const end = eff.end_time ?? item.song.duration_seconds;
+      const speed = eff.playback_speed;
+      const transitionDuration = eff.transition_duration;
 
       const effectiveDuration = Math.max(0, end - start);
       const adjustedDuration = speed > 0 ? effectiveDuration / speed : effectiveDuration;

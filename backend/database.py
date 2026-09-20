@@ -36,12 +36,22 @@ def _migrate(engine_):
     try:
         insp = inspect(engine_)
         with engine_.connect() as conn:
-            # Add separator_text to session_items if missing
             if "session_items" in insp.get_table_names():
                 cols = [c["name"] for c in insp.get_columns("session_items")]
+                # Add separator_text to session_items if missing
                 if "separator_text" not in cols:
                     conn.execute(text("ALTER TABLE session_items ADD COLUMN separator_text VARCHAR(500)"))
-                    conn.commit()
+                # Add per-session playback settings columns
+                for col_name, col_type in [
+                    ("start_time", "FLOAT"),
+                    ("end_time", "FLOAT"),
+                    ("transition_duration", "FLOAT"),
+                    ("transition_type", "VARCHAR(20)"),
+                    ("playback_speed", "FLOAT"),
+                ]:
+                    if col_name not in cols:
+                        conn.execute(text(f"ALTER TABLE session_items ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
     except Exception:
         pass  # Column may already exist from a concurrent deploy
 

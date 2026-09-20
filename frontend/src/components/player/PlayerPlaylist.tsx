@@ -5,6 +5,7 @@ import { SongSettingsModal } from './SongSettingsModal';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { InlineTransitionEditor } from '../shared/InlineTransitionEditor';
 import type { SessionItem } from '../../types';
+import { getEffectivePlaybackSettings } from '../../types';
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -49,11 +50,11 @@ export function PlayerPlaylist() {
 
     for (let i = 0; i < filteredItems.length; i++) {
       const item = filteredItems[i];
-      const ps = item.song?.playback_settings;
-      const start = ps?.start_time ?? 0;
-      const end = ps?.end_time ?? item.song.duration_seconds;
+      const eff = getEffectivePlaybackSettings(item);
+      const start = eff.start_time;
+      const end = eff.end_time ?? item.song.duration_seconds;
       const effectiveDuration = Math.max(0, end - start);
-      const speed = ps?.playback_speed ?? 1.0;
+      const speed = eff.playback_speed;
       const adjustedDuration = speed > 0 ? effectiveDuration / speed : effectiveDuration;
 
       total += adjustedDuration;

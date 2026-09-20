@@ -355,6 +355,17 @@ def update_item(
         item.notes = data.notes
     if data.separator_text is not None:
         item.separator_text = data.separator_text if data.separator_text != "" else None
+    # Per-session playback settings
+    if data.start_time is not None:
+        item.start_time = data.start_time if data.start_time > 0.01 else None
+    if data.end_time is not None:
+        item.end_time = data.end_time if data.end_time > 0.01 else None
+    if data.transition_duration is not None:
+        item.transition_duration = data.transition_duration
+    if data.transition_type is not None:
+        item.transition_type = data.transition_type
+    if data.playback_speed is not None:
+        item.playback_speed = data.playback_speed
     db.commit()
     db.refresh(item)
 

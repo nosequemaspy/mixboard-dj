@@ -76,36 +76,30 @@ export function PlayerControls() {
 
   const handleSpeedCycle = async () => {
     const store = usePlayerStore.getState();
-    const currentSongId = store.currentSongId;
-    if (!currentSongId) return;
+    const currentItemId = store.currentItemId;
+    if (!currentItemId) return;
 
-    const currentItem = store.sessionItems.find(i => i.song_id === currentSongId);
+    const currentItem = store.sessionItems.find(i => i.id === currentItemId);
     if (!currentItem) return;
 
     // Find next preset
     const currentIdx = SPEED_PRESETS.indexOf(speed);
-    const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % SPEED_PRESETS.length : 1; // default to 1.0 if not found
+    const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % SPEED_PRESETS.length : 1;
     const newSpeed = SPEED_PRESETS[nextIdx];
 
     // Apply immediately to playback engine
     getPlaybackEngine().setSpeed(newSpeed);
 
-    // Save to API preserving existing settings
-    const ps = currentItem.song.playback_settings;
+    // Save per session item
+    const sessionId = store.sessionId;
+    if (!sessionId) return;
+    const password = useSessionStore.getState().getPassword(sessionId);
     try {
-      await api.updatePlaybackSettings(currentItem.song.id, {
-        start_time: ps?.start_time ?? 0,
-        end_time: ps?.end_time ?? null,
-        transition_duration: ps?.transition_duration ?? 4,
-        transition_type: ps?.transition_type ?? 'smooth',
+      await api.updateSessionItem(sessionId, currentItem.id, {
         playback_speed: newSpeed,
-      });
-      // Sync session data to update local store
-      const sessionId = store.sessionId;
-      if (sessionId) {
-        await useSessionStore.getState().fetchActiveSession(sessionId);
-        usePlayerStore.getState().syncFromSessionStore();
-      }
+      }, password);
+      await useSessionStore.getState().fetchActiveSession(sessionId);
+      usePlayerStore.getState().syncFromSessionStore();
     } catch (err) {
       console.error('Failed to save speed:', err);
     }

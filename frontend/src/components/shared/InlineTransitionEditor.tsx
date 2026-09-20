@@ -4,6 +4,7 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 import { api } from '../../api/http';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { getEffectivePlaybackSettings } from '../../types';
 import type { SessionItem } from '../../types';
 
 function formatTime(seconds: number): string {
@@ -12,6 +13,13 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
+
+const TRANSITION_TYPES = [
+  { value: 'smooth', label: 'Smooth' },
+  { value: 'sharp', label: 'Sharp' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'cut', label: 'Cut' },
+];
 
 interface InlineTransitionEditorProps {
   item: SessionItem;
@@ -22,12 +30,13 @@ interface InlineTransitionEditorProps {
 
 export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: InlineTransitionEditorProps) {
   const song = item.song;
-  const ps = song.playback_settings;
   const duration = song.duration_seconds;
+  const eff = getEffectivePlaybackSettings(item);
 
-  const [startTime, setStartTime] = useState<number>(ps?.start_time ?? 0);
-  const [endTime, setEndTime] = useState<number>(ps?.end_time ?? duration);
-  const [transitionDuration, setTransitionDuration] = useState(ps?.transition_duration ?? 4);
+  const [startTime, setStartTime] = useState<number>(eff.start_time);
+  const [endTime, setEndTime] = useState<number>(eff.end_time ?? duration);
+  const [transitionDuration, setTransitionDuration] = useState(eff.transition_duration);
+  const [transitionType, setTransitionType] = useState(eff.transition_type);
   const [saving, setSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -203,18 +212,22 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.updatePlaybackSettings(song.id, {
-        start_time: startTime > 0.5 ? startTime : 0,
-        end_time: endTime >= duration - 0.5 ? null : endTime,
-        transition_duration: transitionDuration,
-        transition_type: ps?.transition_type ?? 'smooth',
-        playback_speed: ps?.playback_speed ?? 1.0,
-      });
       const sessionId = usePlayerStore.getState().sessionId;
+      const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
+
       if (sessionId) {
+        // Save per-session-item
+        await api.updateSessionItem(sessionId, item.id, {
+          start_time: startTime > 0.5 ? startTime : 0.0,
+          end_time: endTime >= duration - 0.5 ? 0.0 : endTime,
+          transition_duration: transitionDuration,
+          transition_type: transitionType,
+        }, password);
+
         await useSessionStore.getState().fetchActiveSession(sessionId);
         usePlayerStore.getState().syncFromSessionStore();
       }
+
       onSaved?.();
       onClose();
     } catch (err) {
@@ -256,7 +269,7 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
             Final: <span className="text-red-400">{formatTime(endTime)}</span>
           </span>
           <span>
-            Transicion: <span className="text-amber-400">{transitionDuration.toFixed(1)}s</span>
+            Trans: <span className="text-amber-400">{transitionDuration.toFixed(1)}s</span>
           </span>
         </div>
         {nextItem && (
@@ -266,10 +279,26 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
         )}
       </div>
 
-      {/* Manual transition duration input + buttons */}
-      <div className="flex items-center gap-2">
-        <label className="text-[11px] text-text-muted flex items-center gap-1.5">
-          Transicion:
+      {/* Transition type + duration controls */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1">
+          <span className="text-[11px] text-text-muted font-semibold">Tipo:</span>
+          {TRANSITION_TYPES.map(tt => (
+            <button
+              key={tt.value}
+              onClick={() => setTransitionType(tt.value)}
+              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors min-h-[26px] ${
+                transitionType === tt.value
+                  ? 'bg-accent text-white'
+                  : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover'
+              }`}
+            >
+              {tt.label}
+            </button>
+          ))}
+        </div>
+        <label className="text-[11px] text-text-muted flex items-center gap-1.5 ml-auto">
+          Trans:
           <input
             type="number"
             min={0}
@@ -281,7 +310,10 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
           />
           <span className="text-text-muted/60">s</span>
         </label>
-        <div className="flex-1" />
+      </div>
+
+      {/* Save / Cancel */}
+      <div className="flex items-center justify-end gap-2">
         <button
           onClick={onClose}
           className="px-3 py-1.5 text-xs bg-bg-tertiary text-text-secondary rounded-md hover:bg-bg-hover transition-colors min-h-[32px]"

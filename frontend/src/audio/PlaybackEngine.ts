@@ -1,5 +1,6 @@
 import type { DeckId } from '../types';
 import type { SessionItem } from '../types';
+import { getEffectivePlaybackSettings } from '../types';
 import { AudioEngine } from './AudioEngine';
 type TransitionType = 'smooth' | 'sharp' | 'linear' | 'cut';
 
@@ -12,13 +13,13 @@ interface SongPlaybackConfig {
 }
 
 function getPlaybackConfig(item: SessionItem): SongPlaybackConfig {
-  const ps = item.song?.playback_settings;
+  const eff = getEffectivePlaybackSettings(item);
   return {
-    startTime: ps?.start_time ?? 0,
-    endTime: ps?.end_time ?? null,
-    transitionDuration: ps?.transition_duration ?? 4,
-    transitionType: (ps?.transition_type as TransitionType) ?? 'smooth',
-    playbackSpeed: ps?.playback_speed ?? 1.0,
+    startTime: eff.start_time,
+    endTime: eff.end_time,
+    transitionDuration: eff.transition_duration,
+    transitionType: eff.transition_type as TransitionType,
+    playbackSpeed: eff.playback_speed,
   };
 }
 

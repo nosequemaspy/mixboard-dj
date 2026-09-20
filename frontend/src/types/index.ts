@@ -175,7 +175,31 @@ export interface SessionItem {
   added_by: string;
   notes: string;
   separator_text: string | null;
+  // Per-session playback settings (override song-level when set)
+  start_time: number | null;
+  end_time: number | null;
+  transition_duration: number | null;
+  transition_type: string | null;
+  playback_speed: number | null;
   song: Song;
+}
+
+/** Resolve effective playback settings: session-item overrides > song-level > defaults */
+export function getEffectivePlaybackSettings(item: SessionItem): {
+  start_time: number;
+  end_time: number | null;
+  transition_duration: number;
+  transition_type: string;
+  playback_speed: number;
+} {
+  const ps = item.song.playback_settings;
+  return {
+    start_time: item.start_time ?? ps?.start_time ?? 0,
+    end_time: item.end_time ?? ps?.end_time ?? null,
+    transition_duration: item.transition_duration ?? ps?.transition_duration ?? 4,
+    transition_type: item.transition_type ?? ps?.transition_type ?? 'smooth',
+    playback_speed: item.playback_speed ?? ps?.playback_speed ?? 1.0,
+  };
 }
 
 export interface Suggestion {
