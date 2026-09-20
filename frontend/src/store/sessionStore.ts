@@ -85,8 +85,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (get().activeSessionId === id) {
         set({ activeSession: session });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to fetch session', id, err);
     }
   },
 
