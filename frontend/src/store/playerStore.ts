@@ -30,6 +30,15 @@ interface PlayerStore {
   // Played tracking (by song_id, not item id)
   playedSongIds: Set<number>;
 
+  // Transition state
+  isTransitioning: boolean;
+  nextTransitionSongTitle: string | null;
+  setTransitionState: (isTransitioning: boolean, nextSongTitle: string | null) => void;
+
+  // Session player mode (embedded in Sessions panel)
+  sessionPlayerActive: boolean;
+  toggleSessionPlayer: () => void;
+
   // Restricted mode
   restrictedMode: boolean;
   toggleRestrictedMode: () => void;
@@ -79,7 +88,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   shuffleEnabled: false,
   shuffledOrder: [],
   playedSongIds: new Set(),
+  isTransitioning: false,
+  nextTransitionSongTitle: null,
+  sessionPlayerActive: false,
   restrictedMode: true,
+
+  setTransitionState: (isTransitioning, nextSongTitle) => {
+    set({ isTransitioning, nextTransitionSongTitle: nextSongTitle });
+  },
+
+  toggleSessionPlayer: () => {
+    set(state => ({ sessionPlayerActive: !state.sessionPlayerActive }));
+  },
 
   toggleRestrictedMode: () => {
     set(state => ({ restrictedMode: !state.restrictedMode }));

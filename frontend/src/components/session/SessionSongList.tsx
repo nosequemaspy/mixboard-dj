@@ -6,6 +6,9 @@ import type { SessionItem, SessionFolder, DeckId } from '../../types';
 import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
+import { usePlayerStore } from '../../store/playerStore';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
+import { InlineTransitionEditor } from '../shared/InlineTransitionEditor';
 
 interface SessionSongListProps {
   items: SessionItem[];
@@ -14,6 +17,7 @@ interface SessionSongListProps {
   onUpdate: () => void;
   folders: SessionFolder[];
   activeFolder: number | null;
+  playerActive?: boolean;
 }
 
 function formatDuration(s: number) {
@@ -166,7 +170,7 @@ function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (te
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, isFirst, isLast }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -181,6 +185,14 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   onMoveDown: (itemId: number) => void;
   isFirst: boolean;
   isLast: boolean;
+  playerActive?: boolean;
+  isCurrent?: boolean;
+  onPlayItem?: (item: SessionItem) => void;
+  onAddToQueue?: (item: SessionItem) => void;
+  onToggleTransitionEditor?: (itemId: number) => void;
+  isEditingTransition?: boolean;
+  restrictedMode?: boolean;
+  nextItem?: SessionItem | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
 
@@ -214,6 +226,14 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
     transition,
   };
 
+  const handleRowClick = () => {
+    if (playerActive && onPlayItem) {
+      onPlayItem(item);
+    } else {
+      onShowDeckPicker(item);
+    }
+  };
+
   return (
     <div ref={setNodeRef} style={style}>
       {/* Separator banner above this song */}
@@ -225,10 +245,11 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         />
       )}
     <div
-      onClick={() => onShowDeckPicker(item)}
+      onClick={handleRowClick}
       className={`flex items-center gap-2 px-3 py-1.5 border-b border-border/30 group/row transition-colors cursor-pointer relative ${
+        isCurrent ? 'bg-accent/10 border-l-2 border-l-accent' :
         isSelected ? 'bg-accent/15 border-l-2 border-l-accent' :
-        item.is_played ? 'opacity-40' : isNext ? 'bg-accent/10 border-l-2 border-l-accent' : 'hover:bg-bg-hover'
+        item.is_played && !isNext ? 'opacity-40' : isNext ? 'bg-accent/5 border-l-2 border-l-accent/40' : 'hover:bg-bg-hover'
       }`}
     >
       {/* Selection checkbox */}
@@ -273,7 +294,15 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
       <div {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-primary text-xs" onClick={e => e.stopPropagation()}>
         :::
       </div>
-      <span className="text-xs text-text-muted w-5 text-center tabular-nums">{displayPos}</span>
+      <span className="text-xs text-text-muted w-5 text-center tabular-nums">
+        {isCurrent ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        ) : isNext && playerActive ? (
+          <span className="text-accent/60 text-[9px] font-bold">SIG</span>
+        ) : displayPos}
+      </span>
       {/* Tag color indicator in "Todas" view */}
       {activeFolder === null && itemFolder && (
         <span
@@ -283,10 +312,48 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         />
       )}
       <div className="flex-1 min-w-0">
-        <span className={`text-sm text-text-primary truncate block leading-tight ${item.is_played ? 'line-through' : ''}`}>{item.song.title}</span>
+        <span className={`text-sm truncate block leading-tight ${isCurrent ? 'text-accent font-medium' : 'text-text-primary'} ${item.is_played && !isCurrent ? 'line-through' : ''}`}>{item.song.title}</span>
         <span className="text-xs text-text-muted truncate block leading-tight">{item.song.artist}</span>
       </div>
       <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
+      {/* Player action buttons */}
+      {playerActive && (
+        <div className="flex gap-1 flex-shrink-0">
+          {/* Add to queue */}
+          <button
+            onClick={e => { e.stopPropagation(); onAddToQueue?.(item); }}
+            className="p-1.5 text-text-muted hover:text-accent transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
+            title="Agregar a la cola"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+          {/* Inline transition editor toggle */}
+          {!restrictedMode && (
+            <button
+              onClick={e => { e.stopPropagation(); onToggleTransitionEditor?.(item.id); }}
+              className={`p-1.5 transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center ${
+                isEditingTransition ? 'text-accent' : 'text-text-muted hover:text-accent'
+              }`}
+              title="Editar transicion"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="1" y1="14" x2="7" y2="14" />
+                <line x1="9" y1="8" x2="15" y2="8" />
+                <line x1="17" y1="16" x2="23" y2="16" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex gap-1.5 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
         {folders.length > 0 && (
           <FolderDropdown folders={folders} currentFolderId={item.folder_id} onAssign={assignFolder} />
@@ -329,6 +396,14 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         </button>
       </div>
     </div>
+      {/* Inline transition editor */}
+      {isEditingTransition && (
+        <InlineTransitionEditor
+          item={item}
+          nextItem={nextItem}
+          onClose={() => onToggleTransitionEditor?.(item.id)}
+        />
+      )}
     </div>
   );
 }
@@ -340,14 +415,55 @@ export function SessionSongList({
   onUpdate,
   folders,
   activeFolder,
+  playerActive,
 }: SessionSongListProps) {
   const [search, setSearch] = useState('');
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [deckPickerItem, setDeckPickerItem] = useState<SessionItem | null>(null);
+  const [quickEditItemId, setQuickEditItemId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const currentItemId = usePlayerStore(s => s.currentItemId);
+  const restrictedMode = usePlayerStore(s => s.restrictedMode);
 
   const loadSong = useDeckStore(s => s.loadSong);
   const setDuration = useDeckStore(s => s.setDuration);
   const engine = getAudioEngine();
+
+  const handlePlayItem = (item: SessionItem) => {
+    if (restrictedMode) {
+      setConfirmAction({
+        title: 'Reproducir cancion',
+        message: `Reproducir "${item.song.title}"?`,
+        action: () => usePlayerStore.getState().playItem(item),
+      });
+      return;
+    }
+    usePlayerStore.getState().playItem(item);
+  };
+
+  const handleAddToQueue = (item: SessionItem) => {
+    if (restrictedMode) {
+      setConfirmAction({
+        title: 'Agregar a la cola',
+        message: `Agregar "${item.song.title}" a la cola?`,
+        action: () => {
+          usePlayerStore.getState().addToQueue(item);
+          setToastMessage(`"${item.song.title}" agregada a la cola`);
+          setTimeout(() => setToastMessage(null), 2500);
+        },
+      });
+      return;
+    }
+    usePlayerStore.getState().addToQueue(item);
+    setToastMessage(`"${item.song.title}" agregada a la cola`);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const handleToggleTransitionEditor = (itemId: number) => {
+    setQuickEditItemId(prev => prev === itemId ? null : itemId);
+  };
 
   const loadToDeck = async (item: SessionItem, deckId: DeckId) => {
     loadSong(deckId, item.song);
@@ -470,6 +586,7 @@ export function SessionSongList({
   };
 
   const firstUnplayed = filtered.find(i => !i.is_played);
+  const nextPlayerItem = playerActive && currentItemId ? usePlayerStore.getState().getNextItem() : null;
   const activeFolderData = activeFolder !== null ? folders.find(f => f.id === activeFolder) : null;
 
   return (
@@ -525,7 +642,7 @@ export function SessionSongList({
                 sessionId={sessionId}
                 password={password}
                 onUpdate={onUpdate}
-                isNext={item.id === firstUnplayed?.id}
+                isNext={playerActive && nextPlayerItem ? item.id === nextPlayerItem.id : item.id === firstUnplayed?.id}
                 folders={folders}
                 activeFolder={activeFolder}
                 isSelected={selectedItemIds.has(item.id)}
@@ -535,6 +652,14 @@ export function SessionSongList({
                 onMoveDown={handleMoveDown}
                 isFirst={idx === 0}
                 isLast={idx === filtered.length - 1}
+                playerActive={playerActive}
+                isCurrent={playerActive ? item.id === currentItemId : false}
+                onPlayItem={playerActive ? handlePlayItem : undefined}
+                onAddToQueue={playerActive ? handleAddToQueue : undefined}
+                onToggleTransitionEditor={playerActive ? handleToggleTransitionEditor : undefined}
+                isEditingTransition={playerActive ? quickEditItemId === item.id : false}
+                restrictedMode={playerActive ? restrictedMode : false}
+                nextItem={filtered[idx + 1] ?? null}
               />
             ))}
           </SortableContext>
@@ -558,8 +683,29 @@ export function SessionSongList({
         )}
       </div>
 
+      {/* Confirmation dialog for restricted mode (player) */}
+      {playerActive && (
+        <ConfirmDialog
+          open={confirmAction !== null}
+          title={confirmAction?.title ?? ''}
+          message={confirmAction?.message ?? ''}
+          onConfirm={() => {
+            confirmAction?.action();
+            setConfirmAction(null);
+          }}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium">
+          {toastMessage}
+        </div>
+      )}
+
       {/* Deck picker overlay */}
-      {deckPickerItem && (
+      {deckPickerItem && !playerActive && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={() => setDeckPickerItem(null)}

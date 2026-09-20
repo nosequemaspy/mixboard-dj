@@ -12,6 +12,11 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { Crossfader } from '../mixer/Crossfader';
 import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
+import { usePlayerStore } from '../../store/playerStore';
+import { useSessionStore } from '../../store/sessionStore';
+import { usePlaybackEngine } from '../../hooks/usePlaybackEngine';
+import { useRemoteControl } from '../../hooks/useRemoteControl';
+import { useMediaSession } from '../../hooks/useMediaSession';
 
 function MobileCrossfader() {
   const store = useDeckStore();
@@ -34,8 +39,33 @@ function MobileCrossfader() {
   );
 }
 
+function SessionPlaybackManager() {
+  usePlaybackEngine();
+  const sessionId = usePlayerStore(s => s.sessionId);
+  useRemoteControl(sessionId, 'host');
+  useMediaSession();
+
+  const activeSession = useSessionStore(s => s.activeSession);
+  const activeSessionId = useSessionStore(s => s.activeSessionId);
+  const playerSessionId = usePlayerStore(s => s.sessionId);
+
+  // Sync active session into PlayerStore (mirrors PlayerLayout pattern)
+  useEffect(() => {
+    if (activeSession && activeSessionId) {
+      if (playerSessionId !== activeSessionId) {
+        usePlayerStore.getState().loadSession(activeSessionId);
+      } else {
+        usePlayerStore.getState().syncFromSessionStore();
+      }
+    }
+  }, [activeSession, activeSessionId, playerSessionId]);
+
+  return null;
+}
+
 export function AppLayout() {
   const activePanel = useMixerStore(s => s.activePanel);
+  const sessionPlayerActive = usePlayerStore(s => s.sessionPlayerActive);
 
   // Load songs globally so they're available in Sessions, Editor, etc.
   useEffect(() => {
@@ -44,6 +74,7 @@ export function AppLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-bg-primary">
+      {sessionPlayerActive && <SessionPlaybackManager />}
       <Header />
       {/* Decks + Mixer row */}
       <div className="flex flex-col lg:flex-row gap-0 border-b border-border flex-shrink-0 lg:h-[340px]">

@@ -3,8 +3,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { QueueSection } from './QueueSection';
 import { SongSettingsModal } from './SongSettingsModal';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
-import { api } from '../../api/http';
-import { useSessionStore } from '../../store/sessionStore';
+import { InlineTransitionEditor } from '../shared/InlineTransitionEditor';
 import type { SessionItem } from '../../types';
 
 function formatTime(seconds: number): string {
@@ -23,105 +22,6 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function InlineTransitionEditor({ item, onClose }: { item: SessionItem; onClose: () => void }) {
-  const song = item.song;
-  const ps = song.playback_settings;
-  const [endTime, setEndTime] = useState<number>(ps?.end_time ?? song.duration_seconds);
-  const [transitionDuration, setTransitionDuration] = useState(ps?.transition_duration ?? 4);
-  const [saving, setSaving] = useState(false);
-
-  const transitionStart = Math.max(0, endTime - transitionDuration);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await api.updatePlaybackSettings(song.id, {
-        start_time: ps?.start_time ?? 0,
-        end_time: endTime >= song.duration_seconds ? null : endTime,
-        transition_duration: transitionDuration,
-        transition_type: ps?.transition_type ?? 'smooth',
-        playback_speed: ps?.playback_speed ?? 1.0,
-      });
-      // Refresh session data
-      const sessionId = usePlayerStore.getState().sessionId;
-      if (sessionId) {
-        await useSessionStore.getState().fetchActiveSession(sessionId);
-        usePlayerStore.getState().syncFromSessionStore();
-      }
-      onClose();
-    } catch (err) {
-      console.error('Failed to save transition settings:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="px-4 py-3 bg-bg-secondary/80 border-b border-accent/20 space-y-3">
-      {/* End time slider */}
-      <div>
-        <label className="text-[11px] text-text-muted block mb-1">
-          Final: <span className="text-text-primary font-mono">{formatTime(endTime)}</span>
-          <span className="text-text-muted/60 ml-1">/ {formatTime(song.duration_seconds)}</span>
-        </label>
-        <input
-          type="range"
-          min={0}
-          max={song.duration_seconds}
-          step={0.5}
-          value={endTime}
-          onChange={e => setEndTime(parseFloat(e.target.value))}
-          className="w-full h-1.5 cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, var(--color-accent) ${(endTime / song.duration_seconds) * 100}%, var(--color-bg-tertiary) ${(endTime / song.duration_seconds) * 100}%)`,
-          }}
-        />
-      </div>
-
-      {/* Transition duration slider */}
-      <div>
-        <label className="text-[11px] text-text-muted block mb-1">
-          Transicion: <span className="text-text-primary font-mono">{transitionDuration}s</span>
-        </label>
-        <input
-          type="range"
-          min={0}
-          max={15}
-          step={0.5}
-          value={transitionDuration}
-          onChange={e => setTransitionDuration(parseFloat(e.target.value))}
-          className="w-full h-1.5 cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, var(--color-accent) ${(transitionDuration / 15) * 100}%, var(--color-bg-tertiary) ${(transitionDuration / 15) * 100}%)`,
-          }}
-        />
-      </div>
-
-      {/* Transition start indicator */}
-      <p className="text-[11px] text-accent font-mono">
-        Transicion inicia en {formatTime(transitionStart)}
-      </p>
-
-      {/* Save / Cancel */}
-      <div className="flex gap-2">
-        <button
-          onClick={onClose}
-          className="flex-1 px-3 py-1.5 text-xs bg-bg-tertiary text-text-secondary rounded-md hover:bg-bg-hover transition-colors min-h-[36px]"
-        >
-          Cancelar
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 px-3 py-1.5 text-xs bg-accent text-white rounded-md hover:bg-accent-hover transition-colors disabled:opacity-50 min-h-[36px]"
-        >
-          {saving ? 'Guardando...' : 'Guardar'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function PlayerPlaylist() {
   const activeTagId = usePlayerStore(s => s.activeTagId);
   const folders = usePlayerStore(s => s.folders);
@@ -136,6 +36,7 @@ export function PlayerPlaylist() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const filteredItems = usePlayerStore.getState().getFilteredItems();
+  const nextUpItem = currentItemId ? usePlayerStore.getState().getNextItem() : null;
 
   // Calculate total playlist time and time until selected song
   const { totalDuration, totalRemaining, timeUntilSong } = useMemo(() => {
@@ -318,6 +219,7 @@ export function PlayerPlaylist() {
             {filteredItems.map((item, index) => {
               const isPlayed = playedSongIds.has(item.song_id);
               const isCurrent = item.id === currentItemId;
+              const isNext = nextUpItem?.id === item.id && !isCurrent;
               const isQuickEditing = quickEditItemId === item.id;
 
               return (
@@ -326,7 +228,9 @@ export function PlayerPlaylist() {
                     className={`flex items-center gap-2 px-4 py-2 transition-colors ${
                       isCurrent
                         ? 'bg-accent/10'
-                        : 'hover:bg-bg-tertiary'
+                        : isNext
+                          ? 'bg-accent/5 border-l-2 border-l-accent/40'
+                          : 'hover:bg-bg-tertiary'
                     }`}
                   >
                     {/* Index / playing indicator */}
@@ -337,6 +241,8 @@ export function PlayerPlaylist() {
                             <path d="M8 5v14l11-7z" />
                           </svg>
                         </span>
+                      ) : isNext ? (
+                        <span className="text-accent/60 text-[10px] font-bold uppercase">SIG</span>
                       ) : (
                         <span className={`text-xs font-mono ${isPlayed ? 'text-text-muted/40' : 'text-text-muted'}`}>
                           {index + 1}
@@ -348,11 +254,11 @@ export function PlayerPlaylist() {
                     <button
                       onClick={() => handlePlayItem(item)}
                       className={`flex-1 text-left min-w-0 min-h-[44px] flex flex-col justify-center ${
-                        isPlayed && !isCurrent ? 'opacity-40' : ''
+                        isPlayed && !isCurrent && !isNext ? 'opacity-40' : ''
                       }`}
                     >
                       <p className={`text-sm truncate ${
-                        isCurrent ? 'text-accent font-medium' : 'text-text-primary'
+                        isCurrent ? 'text-accent font-medium' : isNext ? 'text-text-primary font-medium' : 'text-text-primary'
                       } ${isPlayed && !isCurrent ? 'line-through' : ''}`}>
                         {item.song.title}
                       </p>
@@ -434,6 +340,7 @@ export function PlayerPlaylist() {
                   {isQuickEditing && (
                     <InlineTransitionEditor
                       item={item}
+                      nextItem={filteredItems[index + 1] ?? null}
                       onClose={() => setQuickEditItemId(null)}
                     />
                   )}

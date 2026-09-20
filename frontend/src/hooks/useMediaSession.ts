@@ -8,8 +8,10 @@ export function useMediaSession() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const currentTime = usePlayerStore(s => s.currentTime);
   const duration = usePlayerStore(s => s.duration);
+  const isTransitioning = usePlayerStore(s => s.isTransitioning);
+  const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
 
-  // Update metadata when song changes
+  // Update metadata when song changes or transition state changes
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     if (!currentSongId) {
@@ -20,12 +22,16 @@ export function useMediaSession() {
     const item = sessionItems.find(i => i.song_id === currentSongId);
     if (!item) return;
 
+    const title = isTransitioning && nextTransitionSongTitle
+      ? `${item.song.title} -> ${nextTransitionSongTitle}`
+      : item.song.title;
+
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: item.song.title,
+      title,
       artist: item.song.artist || 'Unknown Artist',
       album: 'MixBoard DJ',
     });
-  }, [currentSongId, sessionItems]);
+  }, [currentSongId, sessionItems, isTransitioning, nextTransitionSongTitle]);
 
   // Update playback state
   useEffect(() => {

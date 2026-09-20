@@ -5,6 +5,11 @@ import { Button } from '../shared/Button';
 import { SessionSongList } from './SessionSongList';
 import { TagSidebar } from './FolderChips';
 import { SuggestionReview } from './SuggestionReview';
+import { NowPlaying } from '../player/NowPlaying';
+import { PlayerControls } from '../player/PlayerControls';
+import { QueueSection } from '../player/QueueSection';
+import { usePlayerStore } from '../../store/playerStore';
+import { useSessionStore } from '../../store/sessionStore';
 
 interface SessionDetailProps {
   session: SessionData;
@@ -26,6 +31,100 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function formatDuration(seconds: number): string {
+  if (!seconds || !isFinite(seconds)) return '0:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function SessionNowPlaying() {
+  const isTransitioning = usePlayerStore(s => s.isTransitioning);
+  const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
+
+  return (
+    <div>
+      {isTransitioning && nextTransitionSongTitle && (
+        <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent" />
+          </span>
+          <span className="text-xs text-accent font-medium truncate">
+            Transicionando a {nextTransitionSongTitle}...
+          </span>
+        </div>
+      )}
+      <NowPlaying />
+    </div>
+  );
+}
+
+function SessionTimeInfo({ items }: { items: SessionData['items'] }) {
+  const currentItemId = usePlayerStore(s => s.currentItemId);
+  const currentTime = usePlayerStore(s => s.currentTime);
+  const playedSongIds = usePlayerStore(s => s.playedSongIds);
+
+  const { withTransitions, withoutTransitions, remaining } = useMemo(() => {
+    let withTrans = 0;
+    let withoutTrans = 0;
+    let rem = 0;
+    let foundCurrent = false;
+
+    const songItems = items
+      .filter(i => i.song && !i.separator_text)
+      .sort((a, b) => a.position - b.position);
+
+    for (let i = 0; i < songItems.length; i++) {
+      const item = songItems[i];
+      const ps = item.song?.playback_settings;
+      const start = ps?.start_time ?? 0;
+      const end = ps?.end_time ?? item.song.duration_seconds;
+      const speed = ps?.playback_speed ?? 1.0;
+      const transitionDuration = ps?.transition_duration ?? 4;
+
+      const effectiveDuration = Math.max(0, end - start);
+      const adjustedDuration = speed > 0 ? effectiveDuration / speed : effectiveDuration;
+
+      // Without transitions: raw duration
+      withoutTrans += item.song.duration_seconds;
+
+      // With transitions: adjusted duration minus overlap with next
+      const overlap = i < songItems.length - 1 ? transitionDuration : 0;
+      withTrans += Math.max(0, adjustedDuration - overlap);
+
+      // Remaining time
+      if (item.id === currentItemId) {
+        foundCurrent = true;
+        const currentRemaining = Math.max(0, adjustedDuration - (currentTime - start) / (speed > 0 ? speed : 1));
+        rem += Math.max(0, currentRemaining - overlap);
+      } else if (foundCurrent && !playedSongIds.has(item.song_id)) {
+        rem += Math.max(0, adjustedDuration - overlap);
+      }
+    }
+
+    return { withTransitions: withTrans, withoutTransitions: withoutTrans, remaining: rem };
+  }, [items, currentItemId, currentTime, playedSongIds]);
+
+  return (
+    <div className="px-4 py-1.5 border-t border-border flex items-center gap-3 text-[11px] text-text-muted font-mono flex-wrap">
+      <span title="Con transiciones (ajustado por velocidad y crossfade)">
+        Con trans: {formatDuration(withTransitions)}
+      </span>
+      <span title="Sin transiciones (duracion original)">
+        Sin trans: {formatDuration(withoutTransitions)}
+      </span>
+      {currentItemId && (
+        <span className="text-accent" title="Tiempo restante desde cancion actual">
+          Restante: {formatDuration(remaining)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplicate }: SessionDetailProps) {
   const [activeTab, setActiveTab] = useState<Tab>('songs');
   const [activeFolder, setActiveFolder] = useState<number | null>(null);
@@ -34,11 +133,25 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
   const [noteSending, setNoteSending] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const playerActive = usePlayerStore(s => s.sessionPlayerActive);
+  const restrictedMode = usePlayerStore(s => s.restrictedMode);
+
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, []);
+
+  // When player mode is toggled on, sync the session into PlayerStore
+  useEffect(() => {
+    if (playerActive && session) {
+      const playerSessionId = usePlayerStore.getState().sessionId;
+      const activeSessionId = useSessionStore.getState().activeSessionId;
+      if (activeSessionId && playerSessionId !== activeSessionId) {
+        usePlayerStore.getState().loadSession(activeSessionId);
+      }
+    }
+  }, [playerActive, session]);
 
   const shareUrl = `${window.location.origin}/s/${session.share_code}`;
   const pendingCount = session.suggestions.filter(s => s.status === 'pending').length;
@@ -113,6 +226,14 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
     }
   };
 
+  const handleTogglePlayer = () => {
+    usePlayerStore.getState().toggleSessionPlayer();
+  };
+
+  const handleToggleRestricted = () => {
+    usePlayerStore.getState().toggleRestrictedMode();
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
@@ -130,6 +251,45 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {/* Player mode toggle */}
+          <button
+            onClick={handleTogglePlayer}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium min-h-[32px] transition-colors ${
+              playerActive
+                ? 'bg-accent/20 text-accent hover:bg-accent/30'
+                : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
+            }`}
+            title={playerActive ? 'Desactivar modo player' : 'Activar modo player'}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Player
+          </button>
+          {/* Restricted/Editable toggle (only visible when player is active) */}
+          {playerActive && (
+            <button
+              onClick={handleToggleRestricted}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium min-h-[32px] transition-colors ${
+                restrictedMode
+                  ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                  : 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
+              }`}
+            >
+              {restrictedMode ? (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                </svg>
+              )}
+              {restrictedMode ? 'Restringido' : 'Editable'}
+            </button>
+          )}
           <Button size="sm" variant="ghost" onClick={copyLink}>
             {copied ? 'Copied!' : 'Copy Link'}
           </Button>
@@ -137,6 +297,18 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
           <Button size="sm" variant="primary" onClick={onAddSong}>Add Song</Button>
         </div>
       </div>
+
+      {/* Player UI (when active) */}
+      {playerActive && (
+        <>
+          <div className="flex-shrink-0 border-b border-border">
+            <SessionNowPlaying />
+          </div>
+          <div className="flex-shrink-0 border-b border-border bg-bg-secondary">
+            <PlayerControls />
+          </div>
+        </>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-border px-4">
@@ -182,6 +354,13 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
         </button>
       </div>
 
+      {/* Queue (when player active and on songs tab) */}
+      {playerActive && activeTab === 'songs' && (
+        <div className="flex-shrink-0">
+          <QueueSection />
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'songs' ? (
@@ -206,6 +385,7 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
                 onUpdate={onUpdate}
                 folders={folders}
                 activeFolder={activeFolder}
+                playerActive={playerActive}
               />
             </div>
           </div>
@@ -269,6 +449,13 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
           />
         )}
       </div>
+
+      {/* Time info (when player active and on songs tab) */}
+      {playerActive && activeTab === 'songs' && (
+        <div className="flex-shrink-0">
+          <SessionTimeInfo items={session.items} />
+        </div>
+      )}
     </div>
   );
 }

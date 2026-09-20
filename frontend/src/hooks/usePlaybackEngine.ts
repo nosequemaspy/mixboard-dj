@@ -47,6 +47,9 @@ export function usePlaybackEngine() {
         // Mark the song as played when it starts
         usePlayerStore.getState().markPlayed(item.song_id);
       },
+      onTransitionChange: (isTransitioning, nextSongTitle) => {
+        usePlayerStore.getState().setTransitionState(isTransitioning, nextSongTitle);
+      },
     });
 
     engine.activate();

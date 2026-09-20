@@ -32,10 +32,13 @@ export class PlaybackEngine {
   private isTransitioning = false;
   private active = false;
 
+  private preloadedItem: SessionItem | null = null;
+
   // Callbacks
   private onTimeUpdate: ((time: number) => void) | null = null;
   private onSongEnd: (() => void) | null = null;
   private onSongStart: ((item: SessionItem) => void) | null = null;
+  private onTransitionChange: ((isTransitioning: boolean, nextSongTitle: string | null) => void) | null = null;
 
   // Current state
   private currentItem: SessionItem | null = null;
@@ -50,10 +53,12 @@ export class PlaybackEngine {
     onTimeUpdate: (time: number) => void;
     onSongEnd: () => void;
     onSongStart: (item: SessionItem) => void;
+    onTransitionChange?: (isTransitioning: boolean, nextSongTitle: string | null) => void;
   }) {
     this.onTimeUpdate = callbacks.onTimeUpdate;
     this.onSongEnd = callbacks.onSongEnd;
     this.onSongStart = callbacks.onSongStart;
+    this.onTransitionChange = callbacks.onTransitionChange ?? null;
   }
 
   activate() {
@@ -157,14 +162,19 @@ export class PlaybackEngine {
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems);
       this.preloadedItemId = item.id;
+      this.preloadedItem = item;
     } catch {
       this.preloadedItemId = null;
+      this.preloadedItem = null;
     }
   }
 
   private beginTransition() {
     if (this.isTransitioning) return;
     this.isTransitioning = true;
+
+    const nextTitle = this.preloadedItem?.song?.title ?? null;
+    this.onTransitionChange?.(true, nextTitle);
 
     const config = this.currentConfig!;
     const duration = config.transitionDuration;
@@ -173,6 +183,8 @@ export class PlaybackEngine {
       // Instant cut — no crossfade
       this.engine.stop(this.activeDeck);
       this.swapDecks();
+      this.isTransitioning = false;
+      this.onTransitionChange?.(false, null);
       this.onSongEnd?.();
       return;
     }
@@ -231,6 +243,7 @@ export class PlaybackEngine {
         this.swapDecks();
         this.isTransitioning = false;
         this.crossfadeAnimId = null;
+        this.onTransitionChange?.(false, null);
         this.onSongEnd?.();
       }
     };
@@ -239,8 +252,9 @@ export class PlaybackEngine {
   }
 
   private getPreloadConfig(): SongPlaybackConfig | null {
-    // We don't store the preloaded item reference, so return defaults
-    // The actual config will be set when playSong is called for the next song
+    if (this.preloadedItem) {
+      return getPlaybackConfig(this.preloadedItem);
+    }
     return { startTime: 0, endTime: null, transitionDuration: 4, transitionType: 'smooth', playbackSpeed: 1 };
   }
 
@@ -249,6 +263,7 @@ export class PlaybackEngine {
     this.activeDeck = this.preloadDeck;
     this.preloadDeck = temp;
     this.preloadedItemId = null;
+    this.preloadedItem = null;
   }
 
   pause() {
@@ -273,6 +288,7 @@ export class PlaybackEngine {
     this.currentItem = null;
     this.currentConfig = null;
     this.preloadedItemId = null;
+    this.preloadedItem = null;
     this.isTransitioning = false;
   }
 
