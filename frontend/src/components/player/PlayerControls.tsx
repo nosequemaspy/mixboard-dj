@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { api } from '../../api/http';
 
 const SPEED_PRESETS = [0.75, 1.0, 1.25, 1.5];
@@ -9,6 +11,8 @@ export function PlayerControls() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const shuffleEnabled = usePlayerStore(s => s.shuffleEnabled);
   const speed = usePlayerStore(s => s.getCurrentPlaybackSpeed());
+  const restrictedMode = usePlayerStore(s => s.restrictedMode);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
 
   const handlePlayPause = () => {
     const store = usePlayerStore.getState();
@@ -24,10 +28,9 @@ export function PlayerControls() {
     store.setIsPlaying(!isPlaying);
   };
 
-  const handlePrev = () => {
+  const doPrev = () => {
     const store = usePlayerStore.getState();
     if (store.currentTime > 3) {
-      // Restart current song
       store.setCurrentTime(0);
       getPlaybackEngine().seek(0);
       return;
@@ -35,11 +38,39 @@ export function PlayerControls() {
     store.playPrevious();
   };
 
+  const handlePrev = () => {
+    if (restrictedMode) {
+      setConfirmAction({
+        title: 'Anterior',
+        message: 'Anterior / reiniciar cancion?',
+        action: doPrev,
+      });
+      return;
+    }
+    doPrev();
+  };
+
   const handleNext = () => {
+    if (restrictedMode) {
+      setConfirmAction({
+        title: 'Siguiente',
+        message: 'Siguiente cancion?',
+        action: () => usePlayerStore.getState().playNext(),
+      });
+      return;
+    }
     usePlayerStore.getState().playNext();
   };
 
   const handleShuffle = () => {
+    if (restrictedMode) {
+      setConfirmAction({
+        title: 'Aleatorio',
+        message: shuffleEnabled ? 'Desactivar aleatorio?' : 'Activar aleatorio?',
+        action: () => usePlayerStore.getState().toggleShuffle(),
+      });
+      return;
+    }
     usePlayerStore.getState().toggleShuffle();
   };
 
@@ -141,19 +172,33 @@ export function PlayerControls() {
       </button>
 
       {/* Speed button */}
-      <button
-        onClick={handleSpeedCycle}
-        className={`p-3 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
-          speed !== 1.0
-            ? 'text-accent bg-accent/15'
-            : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
-        }`}
-        title={`Velocidad: ${speed.toFixed(2)}x — Click para cambiar`}
-      >
-        <span className="text-xs font-mono font-bold">
-          {speed === 1.0 ? '1x' : `${speed.toFixed(2).replace(/0$/, '')}x`}
-        </span>
-      </button>
+      {!restrictedMode && (
+        <button
+          onClick={handleSpeedCycle}
+          className={`p-3 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
+            speed !== 1.0
+              ? 'text-accent bg-accent/15'
+              : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
+          }`}
+          title={`Velocidad: ${speed.toFixed(2)}x — Click para cambiar`}
+        >
+          <span className="text-xs font-mono font-bold">
+            {speed === 1.0 ? '1x' : `${speed.toFixed(2).replace(/0$/, '')}x`}
+          </span>
+        </button>
+      )}
+
+      {/* Confirmation dialog for restricted mode */}
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction?.title ?? ''}
+        message={confirmAction?.message ?? ''}
+        onConfirm={() => {
+          confirmAction?.action();
+          setConfirmAction(null);
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

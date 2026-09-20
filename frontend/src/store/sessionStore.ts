@@ -9,12 +9,12 @@ interface SessionStore {
   loading: boolean;
   sessionPasswords: Record<number, string>;
   fetchSessions: () => Promise<void>;
-  setActiveSession: (id: number | null) => void;
+  setActiveSession: (id: number | null) => Promise<void>;
   fetchActiveSession: (id: number) => Promise<void>;
   setPassword: (sessionId: number, password: string) => void;
   getPassword: (sessionId: number) => string | undefined;
   clearPassword: (sessionId: number) => void;
-  restoreLastSession: () => void;
+  restoreLastSession: () => Promise<void>;
 }
 
 const PASSWORDS_KEY = 'mixboard_session_passwords';
@@ -67,14 +67,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  setActiveSession: (id) => {
+  setActiveSession: async (id) => {
     saveActiveSessionId(id);
     if (id === null) {
       set({ activeSessionId: null, activeSession: null });
       return;
     }
     set({ activeSessionId: id });
-    get().fetchActiveSession(id);
+    await get().fetchActiveSession(id);
   },
 
   fetchActiveSession: async (id) => {
@@ -90,14 +90,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  restoreLastSession: () => {
+  restoreLastSession: async () => {
     const savedId = loadActiveSessionId();
     if (savedId !== null) {
       const state = get();
       // Only restore if no session is already active
       if (state.activeSessionId === null) {
         set({ activeSessionId: savedId });
-        state.fetchActiveSession(savedId);
+        await state.fetchActiveSession(savedId);
       }
     }
   },

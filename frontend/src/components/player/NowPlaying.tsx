@@ -14,6 +14,8 @@ export function NowPlaying() {
   const duration = usePlayerStore(s => s.duration);
   const sessionItems = usePlayerStore(s => s.sessionItems);
 
+  const restrictedMode = usePlayerStore(s => s.restrictedMode);
+
   const currentItem = sessionItems.find(i => i.song_id === currentSongId);
   const song = currentItem?.song;
 
@@ -43,7 +45,8 @@ export function NowPlaying() {
               step="0.1"
               value={progress}
               onChange={handleSeek}
-              className="w-full h-2 cursor-pointer"
+              disabled={restrictedMode}
+              className={`w-full h-2 ${restrictedMode ? 'pointer-events-none opacity-70' : 'cursor-pointer'}`}
               style={{
                 background: `linear-gradient(to right, var(--color-accent) ${progress}%, var(--color-bg-tertiary) ${progress}%)`,
               }}

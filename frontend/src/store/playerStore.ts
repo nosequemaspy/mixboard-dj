@@ -30,6 +30,10 @@ interface PlayerStore {
   // Played tracking (by song_id, not item id)
   playedSongIds: Set<number>;
 
+  // Restricted mode
+  restrictedMode: boolean;
+  toggleRestrictedMode: () => void;
+
   // Actions
   loadSession: (sessionId: number) => void;
   syncFromSessionStore: () => void;
@@ -75,6 +79,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   shuffleEnabled: false,
   shuffledOrder: [],
   playedSongIds: new Set(),
+  restrictedMode: true,
+
+  toggleRestrictedMode: () => {
+    set(state => ({ restrictedMode: !state.restrictedMode }));
+  },
 
   loadSession: (sessionId) => {
     const sessionStore = useSessionStore.getState();

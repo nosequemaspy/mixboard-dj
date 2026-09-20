@@ -20,6 +20,7 @@ export function PlayerLayout() {
   const activeSessionId = useSessionStore(s => s.activeSessionId);
   const activeSession = useSessionStore(s => s.activeSession);
   const playerSessionId = usePlayerStore(s => s.sessionId);
+  const restrictedMode = usePlayerStore(s => s.restrictedMode);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
 
   // Remote control: this is the HOST (plays audio)
@@ -73,12 +74,33 @@ export function PlayerLayout() {
           </svg>
         </button>
 
-        <div className="w-10" /> {/* Spacer for centering */}
+        {/* Restricted / Editable mode toggle */}
+        <button
+          onClick={() => usePlayerStore.getState().toggleRestrictedMode()}
+          className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium min-h-[36px] transition-colors ${
+            restrictedMode
+              ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+              : 'bg-green-500/15 text-green-400 hover:bg-green-500/25'
+          }`}
+        >
+          {restrictedMode ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+            </svg>
+          )}
+          {restrictedMode ? 'Restringido' : 'Editable'}
+        </button>
       </header>
 
       {/* Session picker dropdown */}
       {showSessionPicker && (
-        <div className="absolute top-12 left-0 right-0 z-40 bg-bg-secondary border-b border-border shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute top-12 left-0 right-0 z-[51] bg-bg-secondary border-b border-border shadow-lg max-h-64 overflow-y-auto">
           {sessions.length === 0 ? (
             <p className="px-4 py-3 text-sm text-text-muted">No hay sesiones</p>
           ) : (
@@ -100,7 +122,7 @@ export function PlayerLayout() {
 
       {/* Close dropdown on tap outside */}
       {showSessionPicker && (
-        <div className="fixed inset-0 z-30" onClick={() => setShowSessionPicker(false)} />
+        <div className="fixed inset-0 z-50" onClick={() => setShowSessionPicker(false)} />
       )}
 
       {activeSession ? (
