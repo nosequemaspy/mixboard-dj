@@ -71,6 +71,7 @@ class SessionItem(Base):
     transition_duration = Column(Float, nullable=True)
     transition_type = Column(String(20), nullable=True)
     playback_speed = Column(Float, nullable=True)
+    mute_sections = Column(Text, nullable=True)
 
     session = relationship("Session", back_populates="items")
     song = relationship("Song")

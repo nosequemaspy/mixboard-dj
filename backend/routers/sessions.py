@@ -366,6 +366,8 @@ def update_item(
         item.transition_type = data.transition_type
     if data.playback_speed is not None:
         item.playback_speed = data.playback_speed
+    if data.mute_sections is not None:
+        item.mute_sections = data.mute_sections if data.mute_sections else None
     db.commit()
     db.refresh(item)
 

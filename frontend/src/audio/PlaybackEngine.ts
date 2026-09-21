@@ -1,6 +1,6 @@
 import type { DeckId } from '../types';
 import type { SessionItem } from '../types';
-import { getEffectivePlaybackSettings } from '../types';
+import { getEffectivePlaybackSettings, getEffectiveMuteSections } from '../types';
 import { AudioEngine } from './AudioEngine';
 type TransitionType = 'smooth' | 'sharp' | 'linear' | 'cut';
 
@@ -142,6 +142,13 @@ export class PlaybackEngine {
     // Apply playback speed
     this.engine.setTempo(this.activeDeck, this.currentConfig.playbackSpeed);
 
+    // Apply mute sections from session item
+    const muteSections = getEffectiveMuteSections(item);
+    this.engine.setMuteSections(this.activeDeck, muteSections);
+    if (muteSections.length > 0 && hasStems && !this.engine.isInstrumentalLoaded(this.activeDeck)) {
+      this.engine.loadInstrumentalHot(this.activeDeck, item.song.id);
+    }
+
     // Seek to start time
     if (this.currentConfig.startTime > 0) {
       this.engine.seek(this.activeDeck, this.currentConfig.startTime);
@@ -164,6 +171,13 @@ export class PlaybackEngine {
       await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems);
       this.preloadedItemId = item.id;
       this.preloadedItem = item;
+
+      // Apply mute sections for preloaded song
+      const muteSections = getEffectiveMuteSections(item);
+      this.engine.setMuteSections(this.preloadDeck, muteSections);
+      if (muteSections.length > 0 && hasStems && !this.engine.isInstrumentalLoaded(this.preloadDeck)) {
+        this.engine.loadInstrumentalHot(this.preloadDeck, item.song.id);
+      }
     } catch {
       this.preloadedItemId = null;
       this.preloadedItem = null;

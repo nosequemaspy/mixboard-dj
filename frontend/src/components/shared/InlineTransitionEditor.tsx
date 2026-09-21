@@ -4,8 +4,8 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 import { api } from '../../api/http';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { getEffectivePlaybackSettings } from '../../types';
-import type { SessionItem } from '../../types';
+import { getEffectivePlaybackSettings, getEffectiveMuteSections } from '../../types';
+import type { SessionItem, MuteSection } from '../../types';
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -37,6 +37,7 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
   const [endTime, setEndTime] = useState<number>(eff.end_time ?? duration);
   const [transitionDuration, setTransitionDuration] = useState(eff.transition_duration);
   const [transitionType, setTransitionType] = useState(eff.transition_type);
+  const [muteSections, setMuteSections] = useState<MuteSection[]>(getEffectiveMuteSections(item));
   const [saving, setSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,9 +49,11 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
   const startTimeRef = useRef(startTime);
   const endTimeRef = useRef(endTime);
   const transitionDurationRef = useRef(transitionDuration);
+  const muteSectionsRef = useRef(muteSections);
   startTimeRef.current = startTime;
   endTimeRef.current = endTime;
   transitionDurationRef.current = transitionDuration;
+  muteSectionsRef.current = muteSections;
 
   // Initialize WaveSurfer
   useEffect(() => {
@@ -144,6 +147,19 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
       });
     }
 
+    // Mute sections (purple regions)
+    const ms = muteSectionsRef.current;
+    ms.forEach((section, i) => {
+      regions.addRegion({
+        id: `mute-${i}`,
+        start: section.start,
+        end: section.end,
+        color: 'rgba(168, 85, 247, 0.35)',
+        drag: true,
+        resize: true,
+      });
+    });
+
     // Start marker (green line)
     regions.addRegion({
       id: 'start-marker',
@@ -192,6 +208,18 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
         const newTransStart = Math.max(startTimeRef.current, region.start);
         const newTd = Math.max(0, endTimeRef.current - newTransStart);
         setTransitionDuration(Math.min(newTd, 30));
+      } else if (typeof region.id === 'string' && region.id.startsWith('mute-')) {
+        const idx = parseInt(region.id.split('-')[1], 10);
+        setMuteSections(prev => {
+          const updated = [...prev];
+          if (updated[idx]) {
+            updated[idx] = {
+              start: Math.max(0, region.start),
+              end: Math.min(duration, region.end),
+            };
+          }
+          return updated;
+        });
       }
     };
 
@@ -207,7 +235,7 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
   // Redraw regions when values change
   useEffect(() => {
     drawRegions();
-  }, [startTime, endTime, transitionDuration, drawRegions]);
+  }, [startTime, endTime, transitionDuration, muteSections, drawRegions]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -222,6 +250,7 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
           end_time: endTime >= duration - 0.5 ? 0.0 : endTime,
           transition_duration: transitionDuration,
           transition_type: transitionType,
+          mute_sections: muteSections.length > 0 ? JSON.stringify(muteSections) : '',
         }, password);
 
         await useSessionStore.getState().fetchActiveSession(sessionId);
@@ -256,6 +285,12 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
             <span className="w-2.5 h-3 bg-amber-500/40 rounded-sm inline-block" />
             Transicion
           </span>
+          {muteSections.length > 0 && (
+            <span className="flex items-center gap-1 text-purple-400">
+              <span className="w-2.5 h-3 bg-purple-500/40 rounded-sm inline-block" />
+              Mute
+            </span>
+          )}
         </div>
       </div>
 
@@ -310,6 +345,35 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
           />
           <span className="text-text-muted/60">s</span>
         </label>
+      </div>
+
+      {/* Mute sections */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] text-purple-400 font-semibold shrink-0">Mute vocal:</span>
+        {muteSections.map((ms, i) => (
+          <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-500/15 text-[10px] text-purple-300 font-mono">
+            {formatTime(ms.start)}-{formatTime(ms.end)}
+            <button
+              onClick={() => setMuteSections(prev => prev.filter((_, j) => j !== i))}
+              className="text-purple-400 hover:text-red-400 ml-0.5 font-bold"
+              title="Eliminar seccion"
+            >
+              x
+            </button>
+          </span>
+        ))}
+        <button
+          onClick={() => {
+            const mid = duration / 2;
+            const newStart = Math.max(0, mid);
+            const newEnd = Math.min(duration, mid + 5);
+            setMuteSections(prev => [...prev, { start: newStart, end: newEnd }]);
+          }}
+          className="px-2 py-1 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition-colors"
+          title="Agregar seccion de mute"
+        >
+          + Mute
+        </button>
       </div>
 
       {/* Save / Cancel */}

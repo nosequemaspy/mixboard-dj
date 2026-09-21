@@ -48,6 +48,7 @@ def _migrate(engine_):
                     ("transition_duration", "FLOAT"),
                     ("transition_type", "VARCHAR(20)"),
                     ("playback_speed", "FLOAT"),
+                    ("mute_sections", "TEXT"),
                 ]:
                     if col_name not in cols:
                         conn.execute(text(f"ALTER TABLE session_items ADD COLUMN {col_name} {col_type}"))

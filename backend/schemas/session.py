@@ -68,6 +68,7 @@ class SessionItemResponse(BaseModel):
     transition_duration: Optional[float] = None
     transition_type: Optional[str] = None
     playback_speed: Optional[float] = None
+    mute_sections: Optional[str] = None
     song: SongResponse
 
     model_config = {"from_attributes": True}
@@ -143,6 +144,7 @@ class SessionItemUpdate(BaseModel):
     transition_duration: Optional[float] = None
     transition_type: Optional[str] = None
     playback_speed: Optional[float] = None
+    mute_sections: Optional[str] = None
 
 
 # --- Suggestions ---

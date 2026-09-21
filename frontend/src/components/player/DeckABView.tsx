@@ -1,6 +1,6 @@
 import { usePlayerStore } from '../../store/playerStore';
-import { getEffectivePlaybackSettings } from '../../types';
-import type { SessionItem } from '../../types';
+import { getEffectivePlaybackSettings, getEffectiveMuteSections } from '../../types';
+import type { SessionItem, MuteSection } from '../../types';
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -17,6 +17,7 @@ function DeckProgressBar({
   totalDuration,
   currentTime,
   showPlayhead,
+  muteSections = [],
 }: {
   startTime: number;
   endTime: number;
@@ -24,6 +25,7 @@ function DeckProgressBar({
   totalDuration: number;
   currentTime: number;
   showPlayhead: boolean;
+  muteSections?: MuteSection[];
 }) {
   if (totalDuration <= 0) return null;
 
@@ -55,6 +57,20 @@ function DeckProgressBar({
           style={{ left: `${transStartPct}%`, width: `${Math.max(0, endPct - transStartPct)}%` }}
         />
       )}
+
+      {/* Mute sections (purple) */}
+      {muteSections.map((ms, i) => {
+        const msStartPct = (ms.start / totalDuration) * 100;
+        const msEndPct = (ms.end / totalDuration) * 100;
+        return (
+          <div
+            key={i}
+            className="absolute inset-y-0 bg-purple-500/40"
+            style={{ left: `${msStartPct}%`, width: `${Math.max(0, msEndPct - msStartPct)}%` }}
+            title={`Mute: ${formatTime(ms.start)}-${formatTime(ms.end)}`}
+          />
+        );
+      })}
 
       {/* Dimmed zone after end */}
       {endPct < 99.5 && (
@@ -114,6 +130,7 @@ function DeckCard({
   const song = item.song;
   const eff = getEffectivePlaybackSettings(item);
   const effectiveEnd = eff.end_time ?? song.duration_seconds;
+  const itemMuteSections = getEffectiveMuteSections(item);
   const folders = usePlayerStore(s => s.folders);
   const itemFolder = item.folder_id ? folders.find(f => f.id === item.folder_id) : null;
 
@@ -166,6 +183,7 @@ function DeckCard({
             totalDuration={song.duration_seconds}
             currentTime={currentTime}
             showPlayhead={showPlayhead}
+            muteSections={itemMuteSections}
           />
         </div>
         <span className="text-[10px] font-mono text-text-muted tabular-nums shrink-0">

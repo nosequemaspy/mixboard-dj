@@ -181,6 +181,7 @@ export interface SessionItem {
   transition_duration: number | null;
   transition_type: string | null;
   playback_speed: number | null;
+  mute_sections: string | null;
   song: Song;
 }
 
@@ -200,6 +201,12 @@ export function getEffectivePlaybackSettings(item: SessionItem): {
     transition_type: item.transition_type ?? ps?.transition_type ?? 'smooth',
     playback_speed: item.playback_speed ?? ps?.playback_speed ?? 1.0,
   };
+}
+
+/** Parse mute_sections JSON from a session item into typed array */
+export function getEffectiveMuteSections(item: SessionItem): MuteSection[] {
+  if (!item.mute_sections) return [];
+  try { return JSON.parse(item.mute_sections); } catch { return []; }
 }
 
 export interface Suggestion {
