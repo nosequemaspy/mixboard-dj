@@ -87,8 +87,10 @@ export class PlaybackEngine {
       cancelAnimationFrame(this.crossfadeAnimId);
       this.crossfadeAnimId = null;
     }
-    // Reset crossfader to center so both DJ mixer decks are audible
-    this.engine.setCrossfader(0);
+    this.isTransitioning = false;
+    // Reset transition gains to passthrough so DJ mixer decks work at full volume
+    this.engine.setTransitionGain('A', 1);
+    this.engine.setTransitionGain('B', 1);
   }
 
   private startMonitor() {
@@ -137,9 +139,9 @@ export class PlaybackEngine {
     const duration = await this.engine.loadSong(this.activeDeck, item.song.id, hasStems);
     this.currentDuration = duration;
 
-    // Set crossfader fully to active deck
-    const cfValue = this.activeDeck === 'A' ? -1 : 1;
-    this.engine.setCrossfader(cfValue);
+    // Set transition gains: active deck full, preload deck silent
+    this.engine.setTransitionGain(this.activeDeck, 1);
+    this.engine.setTransitionGain(this.preloadDeck, 0);
 
     // Apply playback speed
     this.engine.setTempo(this.activeDeck, this.currentConfig.playbackSpeed);
@@ -218,9 +220,7 @@ export class PlaybackEngine {
       }
     }
 
-    // Animate crossfader
-    const startCf = this.activeDeck === 'A' ? -1 : 1;
-    const endCf = this.activeDeck === 'A' ? 1 : -1;
+    // Animate transition gains (independent of DJ mixer crossfader)
     const startTimestamp = performance.now();
     const durationMs = duration * 1000;
 
@@ -249,8 +249,9 @@ export class PlaybackEngine {
           break;
       }
 
-      const cfValue = startCf + (endCf - startCf) * easedProgress;
-      this.engine.setCrossfader(cfValue);
+      // Fade out active deck, fade in preload deck
+      this.engine.setTransitionGain(this.activeDeck, 1 - easedProgress);
+      this.engine.setTransitionGain(this.preloadDeck, easedProgress);
 
       if (progress < 1) {
         this.crossfadeAnimId = requestAnimationFrame(animate);

@@ -10,6 +10,7 @@ interface DeckNodes {
   eqMid: BiquadFilterNode;
   eqHigh: BiquadFilterNode;
   volume: GainNode;
+  transitionGain: GainNode;
   crossfaderGain: GainNode;
   headphoneCueGain: GainNode;
   analyser: AnalyserNode;
@@ -119,6 +120,7 @@ export class AudioEngine {
     eqHigh.gain.value = 0;
 
     const volume = this.ctx.createGain();
+    const transitionGain = this.ctx.createGain(); // PlaybackEngine-only gain for session transitions
     const crossfaderGain = this.ctx.createGain();
     const headphoneCueGain = this.ctx.createGain();
     headphoneCueGain.gain.value = 0; // cue off by default
@@ -130,8 +132,9 @@ export class AudioEngine {
     eqMid.connect(eqHigh);
     eqHigh.connect(volume);
 
-    // Volume splits to crossfader (master) and headphone cue
-    volume.connect(crossfaderGain);
+    // Volume → transitionGain (session player) → crossfaderGain (DJ mixer) → master
+    volume.connect(transitionGain);
+    transitionGain.connect(crossfaderGain);
     crossfaderGain.connect(this.masterGain);
     crossfaderGain.connect(analyser);
 
@@ -148,6 +151,7 @@ export class AudioEngine {
       eqMid,
       eqHigh,
       volume,
+      transitionGain,
       crossfaderGain,
       headphoneCueGain,
       analyser,
@@ -455,6 +459,12 @@ export class AudioEngine {
       deck.gainOriginal.gain.linearRampToValueAtTime(1, t + 0.02);
       deck.gainInstrumental.gain.linearRampToValueAtTime(0, t + 0.02);
     }
+  }
+
+  /** Set per-deck transition gain (used by PlaybackEngine, independent of crossfader) */
+  setTransitionGain(deckId: DeckId, value: number) {
+    const deck = this.decks.get(deckId)!;
+    deck.transitionGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.005);
   }
 
   setCrossfader(value: number) {
