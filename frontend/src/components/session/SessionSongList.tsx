@@ -360,41 +360,49 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
           </button>
           {posMenuOpen && (
             <div
-              className="absolute left-0 top-full mt-1 z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl p-2 min-w-[140px]"
+              className="absolute left-0 top-full mt-1 z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[180px]"
               onClick={e => e.stopPropagation()}
             >
-              <div className="flex gap-1 mb-2">
-                <button
-                  onClick={() => { onMoveToPosition(item.id, 1); setPosMenuOpen(false); }}
-                  className="flex-1 text-[10px] px-2 py-1.5 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
-                >
-                  Inicio
-                </button>
-                <button
-                  onClick={() => { onMoveToPosition(item.id, totalItems); setPosMenuOpen(false); }}
-                  className="flex-1 text-[10px] px-2 py-1.5 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
-                >
-                  Final
-                </button>
-              </div>
-              <div className="flex gap-1">
-                <input
-                  type="number"
-                  min={1}
-                  max={totalItems}
-                  value={posInput}
-                  onChange={e => setPosInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') submitPosMove(); if (e.key === 'Escape') setPosMenuOpen(false); }}
-                  autoFocus
-                  className="flex-1 w-0 bg-bg-primary border border-border/60 rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent/60 tabular-nums"
-                  placeholder="#"
-                />
-                <button
-                  onClick={submitPosMove}
-                  className="text-[10px] px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
-                >
-                  Ir
-                </button>
+              <button
+                onClick={() => { onMoveToPosition(item.id, 1); setPosMenuOpen(false); }}
+                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 3h8M8 7v6M5 10l3-3 3 3"/>
+                </svg>
+                Mover al primer lugar
+              </button>
+              <button
+                onClick={() => { onMoveToPosition(item.id, totalItems); setPosMenuOpen(false); }}
+                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 13h8M8 3v6M5 6l3 3 3-3"/>
+                </svg>
+                Mover al ultimo lugar
+              </button>
+              <div className="mx-2 my-1 border-t border-border/30" />
+              <div className="px-3 py-2">
+                <label className="text-[10px] text-text-muted mb-1.5 block">Mover a posicion:</label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalItems}
+                    value={posInput}
+                    onChange={e => setPosInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') submitPosMove(); if (e.key === 'Escape') setPosMenuOpen(false); }}
+                    autoFocus
+                    className="flex-1 w-0 bg-bg-primary border border-border/60 rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent/60 tabular-nums"
+                    placeholder="Ej: 45"
+                  />
+                  <button
+                    onClick={submitPosMove}
+                    className="text-xs px-3 py-1.5 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
+                  >
+                    Ir
+                  </button>
+                </div>
               </div>
             </div>
           )}
