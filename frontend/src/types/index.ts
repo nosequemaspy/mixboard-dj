@@ -203,6 +203,21 @@ export function getEffectivePlaybackSettings(item: SessionItem): {
   };
 }
 
+/** Normalize text for search: lowercase, strip accents/diacritics */
+function normalizeSearch(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Tokenized search: every word in the query must appear somewhere in title or artist */
+export function matchesSearch(query: string, title: string, artist: string): boolean {
+  if (!query) return true;
+  const normalizedTitle = normalizeSearch(title);
+  const normalizedArtist = normalizeSearch(artist);
+  const combined = normalizedTitle + ' ' + normalizedArtist;
+  const tokens = normalizeSearch(query).split(/\s+/).filter(Boolean);
+  return tokens.every(token => combined.includes(token));
+}
+
 /** Parse mute_sections JSON from a session item into typed array */
 export function getEffectiveMuteSections(item: SessionItem): MuteSection[] {
   if (!item.mute_sections) return [];

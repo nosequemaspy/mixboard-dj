@@ -3,6 +3,7 @@ import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { SessionItem, SessionFolder, DeckId } from '../../types';
+import { matchesSearch } from '../../types';
 import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
 import { api } from '../../api/http';
@@ -532,11 +533,9 @@ export function SessionSongList({
     return list;
   }, [items, activeFolder]);
 
-  const filtered = visibleItems.filter(item => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return item.song.title.toLowerCase().includes(q) || item.song.artist.toLowerCase().includes(q);
-  });
+  // When searching, search ALL items (not just current folder) for better results
+  const searchSource = search ? items.sort((a, b) => a.position - b.position) : visibleItems;
+  const filtered = searchSource.filter(item => matchesSearch(search, item.song.title, item.song.artist));
 
   const isFiltering = search.length > 0;
   const hasSelection = selectedItemIds.size > 0;

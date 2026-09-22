@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Modal } from '../shared/Modal';
 import type { Song } from '../../types';
+import { matchesSearch } from '../../types';
 
 interface AddSongToSessionModalProps {
   open: boolean;
@@ -21,11 +22,7 @@ export function AddSongToSessionModal({ open, onClose, songs, onAdd, onAddAll, e
     return songs.filter(s => !existingSet.has(s.id) && !addedIds.has(s.id));
   }, [songs, existingItemSongIds, addedIds]);
 
-  const filtered = availableSongs.filter(s => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q);
-  });
+  const filtered = availableSongs.filter(s => matchesSearch(search, s.title, s.artist));
 
   const handleAdd = (songId: number) => {
     onAdd(songId);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Song, DeckId } from '../../types';
+import { matchesSearch } from '../../types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useDeckStore } from '../../store/deckStore';
 import { getAudioEngine } from '../../hooks/useAudioEngine';
@@ -12,10 +13,7 @@ export function SongTable() {
     let result = [...songs];
 
     if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(s =>
-        s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q)
-      );
+      result = result.filter(s => matchesSearch(search, s.title, s.artist));
     }
 
     if (selectedCategoryId) {

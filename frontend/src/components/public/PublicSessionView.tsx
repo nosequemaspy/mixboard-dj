@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { SessionData } from '../../types';
+import { matchesSearch } from '../../types';
 import { SuggestionForm } from './SuggestionForm';
 import { NotesSection } from './NotesSection';
 import { FolderChips } from '../session/FolderChips';
@@ -45,11 +46,9 @@ export function PublicSessionView({ session, onRefresh }: PublicSessionViewProps
     return list;
   }, [session.items, activeFolder]);
 
-  const filtered = visibleItems.filter(item => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return item.song.title.toLowerCase().includes(q) || item.song.artist.toLowerCase().includes(q);
-  });
+  // When searching, search ALL items (not just current folder)
+  const searchSource = search ? session.items.sort((a, b) => a.position - b.position) : visibleItems;
+  const filtered = searchSource.filter(item => matchesSearch(search, item.song.title, item.song.artist));
 
   const activeFolderData = activeFolder !== null ? folders.find(f => f.id === activeFolder) : null;
 
