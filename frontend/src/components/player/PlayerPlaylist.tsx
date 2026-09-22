@@ -5,7 +5,7 @@ import { SongSettingsModal } from './SongSettingsModal';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { InlineTransitionEditor } from '../shared/InlineTransitionEditor';
 import type { SessionItem } from '../../types';
-import { getEffectivePlaybackSettings } from '../../types';
+import { getEffectivePlaybackSettings, matchesSearch } from '../../types';
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -35,8 +35,13 @@ export function PlayerPlaylist() {
   const [quickEditItemId, setQuickEditItemId] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const filteredItems = usePlayerStore.getState().getFilteredItems();
+  const searchedItems = useMemo(() =>
+    filteredItems.filter(item => matchesSearch(search, item.song.title, item.song.artist)),
+    [filteredItems, search]
+  );
   const nextUpItem = currentItemId ? usePlayerStore.getState().getNextItem() : null;
 
   // Calculate total playlist time and time until selected song
@@ -178,6 +183,22 @@ export function PlayerPlaylist() {
         </div>
       </div>
 
+      {/* Search bar */}
+      <div className="px-4 py-2 border-b border-border flex-shrink-0">
+        <div className="relative">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar cancion..."
+            className="w-full bg-bg-primary border border-border/60 rounded-md pl-8 pr-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent/60 placeholder:text-text-muted/50 transition-colors"
+          />
+        </div>
+      </div>
+
       {/* Playlist time info */}
       <div className="px-4 py-1.5 border-b border-border flex items-center gap-3 text-xs text-text-muted font-mono flex-shrink-0 flex-wrap">
         <span title="Duración total">Total: {formatDuration(totalDuration)}</span>
@@ -211,13 +232,13 @@ export function PlayerPlaylist() {
 
       {/* Song list */}
       <div className="flex-1 overflow-y-auto">
-        {filteredItems.length === 0 ? (
+        {searchedItems.length === 0 ? (
           <div className="px-4 py-8 text-center text-text-muted text-sm">
-            No hay canciones en esta vista
+            {search ? 'Sin resultados' : 'No hay canciones en esta vista'}
           </div>
         ) : (
           <div className="py-1">
-            {filteredItems.map((item, index) => {
+            {searchedItems.map((item, index) => {
               const isPlayed = playedSongIds.has(item.song_id);
               const isCurrent = item.id === currentItemId;
               const isNext = nextUpItem?.id === item.id && !isCurrent;
@@ -341,7 +362,7 @@ export function PlayerPlaylist() {
                   {isQuickEditing && (
                     <InlineTransitionEditor
                       item={item}
-                      nextItem={filteredItems[index + 1] ?? null}
+                      nextItem={searchedItems[index + 1] ?? null}
                       onClose={() => setQuickEditItemId(null)}
                     />
                   )}
