@@ -171,7 +171,7 @@ function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (te
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, onMoveToPosition, totalItems, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -184,6 +184,8 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   onShowDeckPicker: (item: SessionItem) => void;
   onMoveUp: (itemId: number) => void;
   onMoveDown: (itemId: number) => void;
+  onMoveToPosition: (itemId: number, targetPos: number) => void;
+  totalItems: number;
   isFirst: boolean;
   isLast: boolean;
   playerActive?: boolean;
@@ -197,6 +199,27 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   isInQueue?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
+
+  const [posMenuOpen, setPosMenuOpen] = useState(false);
+  const [posInput, setPosInput] = useState('');
+  const posMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!posMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (posMenuRef.current && !posMenuRef.current.contains(e.target as Node)) setPosMenuOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [posMenuOpen]);
+
+  const submitPosMove = () => {
+    const num = parseInt(posInput, 10);
+    if (!isNaN(num) && num >= 1) {
+      onMoveToPosition(item.id, num);
+      setPosMenuOpen(false);
+    }
+  };
 
   const setSeparator = async (text: string | null) => {
     await api.updateSessionItem(sessionId, item.id, { separator_text: text ?? '' }, password);
@@ -319,15 +342,74 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
           :::
         </div>
       )}
-      <span className="text-xs text-text-muted w-5 text-center tabular-nums">
-        {isCurrent ? (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        ) : isNext && playerActive ? (
-          <span className="text-accent/60 text-[9px] font-bold">SIG</span>
-        ) : displayPos}
-      </span>
+      {/* Position indicator - clickable in edit mode */}
+      {!hideEditControls ? (
+        <div className="relative" ref={posMenuRef}>
+          <button
+            onClick={e => { e.stopPropagation(); setPosInput(String(displayPos)); setPosMenuOpen(!posMenuOpen); }}
+            className="text-xs text-text-muted hover:text-accent w-5 text-center tabular-nums transition-colors"
+            title="Mover a posición..."
+          >
+            {isCurrent ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            ) : isNext && playerActive ? (
+              <span className="text-accent/60 text-[9px] font-bold">SIG</span>
+            ) : displayPos}
+          </button>
+          {posMenuOpen && (
+            <div
+              className="absolute left-0 top-full mt-1 z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl p-2 min-w-[140px]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex gap-1 mb-2">
+                <button
+                  onClick={() => { onMoveToPosition(item.id, 1); setPosMenuOpen(false); }}
+                  className="flex-1 text-[10px] px-2 py-1.5 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
+                >
+                  Inicio
+                </button>
+                <button
+                  onClick={() => { onMoveToPosition(item.id, totalItems); setPosMenuOpen(false); }}
+                  className="flex-1 text-[10px] px-2 py-1.5 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors font-medium"
+                >
+                  Final
+                </button>
+              </div>
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={totalItems}
+                  value={posInput}
+                  onChange={e => setPosInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') submitPosMove(); if (e.key === 'Escape') setPosMenuOpen(false); }}
+                  autoFocus
+                  className="flex-1 w-0 bg-bg-primary border border-border/60 rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent/60 tabular-nums"
+                  placeholder="#"
+                />
+                <button
+                  onClick={submitPosMove}
+                  className="text-[10px] px-2 py-1 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
+                >
+                  Ir
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <span className="text-xs text-text-muted w-5 text-center tabular-nums">
+          {isCurrent ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          ) : isNext && playerActive ? (
+            <span className="text-accent/60 text-[9px] font-bold">SIG</span>
+          ) : displayPos}
+        </span>
+      )}
       {/* Tag color indicator in "Todas" view */}
       {activeFolder === null && itemFolder && (
         <span
@@ -610,6 +692,21 @@ export function SessionSongList({
     onUpdate();
   };
 
+  const handleMoveToPosition = async (itemId: number, targetPos: number) => {
+    const idx = visibleItems.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const targetIndex = Math.max(0, Math.min(targetPos - 1, visibleItems.length - 1));
+    if (targetIndex === idx) return;
+    const reordered = arrayMove(visibleItems, idx, targetIndex);
+    const itemIds = reordered.map(i => i.id);
+    if (activeFolder !== null) {
+      await api.reorderFolderItems(sessionId, activeFolder, itemIds, password);
+    } else {
+      await api.reorderSessionItems(sessionId, itemIds, password);
+    }
+    onUpdate();
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     if (isFiltering) return;
     const { active, over } = event;
@@ -693,6 +790,8 @@ export function SessionSongList({
                 onShowDeckPicker={setDeckPickerItem}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
+                onMoveToPosition={handleMoveToPosition}
+                totalItems={visibleItems.length}
                 isFirst={idx === 0}
                 isLast={idx === filtered.length - 1}
                 playerActive={playerActive}
