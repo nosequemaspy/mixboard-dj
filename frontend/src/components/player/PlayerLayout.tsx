@@ -9,6 +9,7 @@ import { useMediaSession } from '../../hooks/useMediaSession';
 import { NowPlaying } from './NowPlaying';
 import { PlayerControls } from './PlayerControls';
 import { PlayerPlaylist } from './PlayerPlaylist';
+import { SessionSongEditor } from './SessionSongEditor';
 import { InstallPrompt } from '../shared/InstallPrompt';
 
 export function PlayerLayout() {
@@ -21,6 +22,7 @@ export function PlayerLayout() {
   const activeSession = useSessionStore(s => s.activeSession);
   const playerSessionId = usePlayerStore(s => s.sessionId);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
+  const currentItemId = usePlayerStore(s => s.currentItemId);
   const isTransitioning = usePlayerStore(s => s.isTransitioning);
   const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
@@ -129,10 +131,18 @@ export function PlayerLayout() {
 
       {activeSession ? (
         <>
-          {/* Now Playing */}
-          <div className="flex-shrink-0 border-b border-border">
-            <NowPlaying />
-          </div>
+          {!restrictedMode && currentItemId ? (
+            // Full editor mode
+            <SessionSongEditor />
+          ) : (
+            // Compact mode (restricted or no song)
+            <>
+              <div className="flex-shrink-0 border-b border-border">
+                <NowPlaying />
+              </div>
+              <PlayerPlaylist />
+            </>
+          )}
 
           {/* Transition indicator */}
           {isTransitioning && nextTransitionSongTitle && (
@@ -147,13 +157,10 @@ export function PlayerLayout() {
             </div>
           )}
 
-          {/* Controls */}
+          {/* Controls (always visible) */}
           <div className="flex-shrink-0 border-b border-border bg-bg-secondary">
             <PlayerControls />
           </div>
-
-          {/* Playlist */}
-          <PlayerPlaylist />
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center">

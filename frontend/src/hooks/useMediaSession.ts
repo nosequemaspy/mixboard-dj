@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { getPlaybackEngine } from './usePlaybackEngine';
+import { getEffectivePlaybackSettings } from '../types';
 
 export function useMediaSession() {
   const currentSongId = usePlayerStore(s => s.currentSongId);
@@ -44,10 +45,18 @@ export function useMediaSession() {
     if (!('mediaSession' in navigator)) return;
     if (!duration || duration <= 0) return;
 
+    // Get actual playback speed from current session item
+    let rate = 1;
+    const store = usePlayerStore.getState();
+    if (store.currentItemId) {
+      const item = store.sessionItems.find(i => i.id === store.currentItemId);
+      if (item) rate = getEffectivePlaybackSettings(item).playback_speed;
+    }
+
     try {
       navigator.mediaSession.setPositionState({
         duration: duration,
-        playbackRate: 1,
+        playbackRate: rate,
         position: Math.min(currentTime, duration),
       });
     } catch {
@@ -60,7 +69,17 @@ export function useMediaSession() {
     if (!('mediaSession' in navigator)) return;
 
     const handlePlay = () => {
-      usePlayerStore.getState().setIsPlaying(true);
+      const store = usePlayerStore.getState();
+      if (!store.currentItemId) {
+        // Nothing playing — start from first unplayed song (like PlayerControls)
+        const filtered = store.getFilteredItems();
+        const first = filtered.find(i => !store.playedSongIds.has(i.song_id)) || filtered[0];
+        if (first) {
+          store.playItem(first);
+          return;
+        }
+      }
+      store.setIsPlaying(true);
     };
 
     const handlePause = () => {
