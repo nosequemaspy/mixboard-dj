@@ -30,17 +30,14 @@ export function usePlaybackEngine() {
           state.markPlayed(state.currentSongId);
         }
 
-        // Get next item and play it
-        const nextItem = state.getNextItem();
-        if (nextItem) {
-          state.playItem(nextItem);
+        // Use playNext() which properly consumes from queue.
+        // The store subscription below will detect currentItemId change
+        // and call engine.playSong(). If the song is already playing
+        // (from a transition), playSong will detect it and skip the reload.
+        state.playNext();
 
-          // Get the item after next for preloading
-          // We need to temporarily set the current to next to compute the one after
-          const afterNext = usePlayerStore.getState().getNextItem();
-          engine.playSong(nextItem, afterNext);
-        } else {
-          usePlayerStore.getState().setIsPlaying(false);
+        // If no more songs to play, stop the engine
+        if (!usePlayerStore.getState().isPlaying) {
           engine.stop();
         }
       },
@@ -70,9 +67,17 @@ export function usePlaybackEngine() {
       if (state.currentItemId !== prevState.currentItemId && state.currentItemId !== null) {
         const item = state.sessionItems.find(i => i.id === state.currentItemId);
         if (item) {
+          // Show transition indicator immediately so skip feels responsive
+          state.setTransitionState(true, item.song.title);
           const nextItem = state.getNextItem();
           engine.playSong(item, nextItem);
         }
+      }
+
+      // When queue changes, re-preload so transitions use the correct next song
+      if (state.queue !== prevState.queue) {
+        const nextItem = state.getNextItem();
+        engine.rePreload(nextItem);
       }
     });
 

@@ -601,6 +601,7 @@ export function SessionSongList({
   };
 
   const loadToDeck = async (item: SessionItem, deckId: DeckId) => {
+    setDeckPickerItem(null);
     loadSong(deckId, item.song);
     const duration = await engine.loadSong(deckId, item.song.id, item.song.stems_status === 'ready');
     setDuration(deckId, duration);
@@ -609,7 +610,6 @@ export function SessionSongList({
       await api.updateSessionItem(sessionId, item.id, { is_played: true }, password);
       onUpdate();
     }
-    setDeckPickerItem(null);
   };
 
   const visibleItems = useMemo(() => {

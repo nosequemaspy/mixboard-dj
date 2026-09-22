@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import shutil
+import unicodedata
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
@@ -23,6 +24,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/songs", tags=["songs"])
 
 
+def _strip_accents(text: str) -> str:
+    """Remove accents/diacritics from text for search matching."""
+    nfkd = unicodedata.normalize('NFD', text)
+    return ''.join(c for c in nfkd if unicodedata.category(c) != 'Mn')
+
+
+def _matches_search(search: str, title: str, artist: str) -> bool:
+    """Accent-insensitive tokenized search matching frontend behavior."""
+    if not search:
+        return True
+    combined = _strip_accents(title).lower() + ' ' + _strip_accents(artist).lower()
+    tokens = _strip_accents(search).lower().split()
+    return all(token in combined for token in tokens)
+
+
 @router.get("", response_model=SongListResponse)
 def list_songs(
     search: str = Query("", description="Search by title or artist"),
@@ -32,10 +48,6 @@ def list_songs(
     db: Session = Depends(get_db),
 ):
     query = db.query(Song).options(joinedload(Song.categories), joinedload(Song.stems), joinedload(Song.playback_settings))
-
-    if search:
-        pattern = f"%{search}%"
-        query = query.filter((Song.title.ilike(pattern)) | (Song.artist.ilike(pattern)))
 
     if category_id:
         query = query.join(song_categories).filter(song_categories.c.category_id == category_id)
@@ -47,6 +59,11 @@ def list_songs(
         query = query.order_by(sort_column.desc())
 
     songs = query.all()
+
+    # Accent-insensitive tokenized search in Python (works with any DB)
+    if search:
+        songs = [s for s in songs if _matches_search(search, s.title or '', s.artist or '')]
+
     # Deduplicate from joins
     seen = set()
     unique = []

@@ -21,6 +21,8 @@ export function PlayerLayout() {
   const activeSession = useSessionStore(s => s.activeSession);
   const playerSessionId = usePlayerStore(s => s.sessionId);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
+  const isTransitioning = usePlayerStore(s => s.isTransitioning);
+  const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
 
   // Remote control: this is the HOST (plays audio)
@@ -131,6 +133,19 @@ export function PlayerLayout() {
           <div className="flex-shrink-0 border-b border-border">
             <NowPlaying />
           </div>
+
+          {/* Transition indicator */}
+          {isTransitioning && nextTransitionSongTitle && (
+            <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-accent/10 border-b border-accent/20">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
+              </span>
+              <span className="text-xs text-accent font-medium truncate">
+                Cambiando a {nextTransitionSongTitle}...
+              </span>
+            </div>
+          )}
 
           {/* Controls */}
           <div className="flex-shrink-0 border-b border-border bg-bg-secondary">

@@ -5,6 +5,7 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { useLibraryStore } from '../../store/libraryStore';
 import { api } from '../../api/http';
 import { Button } from '../shared/Button';
+import { matchesSearch } from '../../types';
 import type { Song } from '../../types';
 
 interface Clip {
@@ -664,9 +665,7 @@ export function AudioEditor() {
   };
 
   const filteredSongs = searchQuery
-    ? songs.filter(s =>
-        s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.artist.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? songs.filter(s => matchesSearch(searchQuery, s.title, s.artist))
     : songs;
 
   // =================== JSX ===================
