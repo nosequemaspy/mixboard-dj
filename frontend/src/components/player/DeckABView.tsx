@@ -247,7 +247,7 @@ export function DeckABView() {
           item={nextItem}
           currentTime={0}
           showPlayhead={false}
-          isQueue={isNextFromQueue}
+          isQueue={isNextFromQueue || undefined}
         />
       ) : (
         <div className="px-4 py-4 text-center">
