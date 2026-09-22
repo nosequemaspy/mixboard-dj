@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { QueueSection } from './QueueSection';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
-import { InlineTransitionEditor } from '../shared/InlineTransitionEditor';
 import type { SessionItem } from '../../types';
 import { getEffectivePlaybackSettings, matchesSearch } from '../../types';
 
@@ -29,8 +28,6 @@ export function PlayerPlaylist() {
   const playedSongIds = usePlayerStore(s => s.playedSongIds);
   const currentTime = usePlayerStore(s => s.currentTime);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
-  const [timeUntilItemId, setTimeUntilItemId] = useState<number | null>(null);
-  const [quickEditItemId, setQuickEditItemId] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -42,13 +39,11 @@ export function PlayerPlaylist() {
   );
   const nextUpItem = currentItemId ? usePlayerStore.getState().getNextItem() : null;
 
-  // Calculate total playlist time and time until selected song
-  const { totalDuration, totalRemaining, timeUntilSong } = useMemo(() => {
+  // Calculate total playlist time
+  const { totalDuration, totalRemaining } = useMemo(() => {
     let total = 0;
     let remaining = 0;
-    let timeUntil = 0;
     let foundCurrent = false;
-    let foundTarget = false;
     const currentIdx = filteredItems.findIndex(i => i.id === currentItemId);
 
     for (let i = 0; i < filteredItems.length; i++) {
@@ -62,41 +57,17 @@ export function PlayerPlaylist() {
 
       total += adjustedDuration;
 
-      // Calculate remaining time from current position
       if (i === currentIdx) {
         foundCurrent = true;
-        // Add remaining time of current song
         const currentRemaining = Math.max(0, adjustedDuration - (currentTime - start) / (speed > 0 ? speed : 1));
         remaining += currentRemaining;
       } else if (foundCurrent && !playedSongIds.has(item.song_id)) {
         remaining += adjustedDuration;
       }
-
-      // Calculate time until target song
-      if (timeUntilItemId !== null) {
-        if (item.id === timeUntilItemId) {
-          foundTarget = true;
-        } else if (!foundTarget) {
-          if (i === currentIdx) {
-            const currentRemaining = Math.max(0, adjustedDuration - (currentTime - start) / (speed > 0 ? speed : 1));
-            timeUntil += currentRemaining;
-          } else if (i > currentIdx && !playedSongIds.has(item.song_id)) {
-            timeUntil += adjustedDuration;
-          }
-        }
-      }
     }
 
-    return {
-      totalDuration: total,
-      totalRemaining: remaining,
-      timeUntilSong: timeUntilItemId !== null ? timeUntil : null,
-    };
-  }, [filteredItems, currentItemId, currentTime, playedSongIds, timeUntilItemId]);
-
-  const handleTimeUntilToggle = (itemId: number) => {
-    setTimeUntilItemId(prev => prev === itemId ? null : itemId);
-  };
+    return { totalDuration: total, totalRemaining: remaining };
+  }, [filteredItems, currentItemId, currentTime, playedSongIds]);
 
   const handleTagClick = (tagId: number | null) => {
     usePlayerStore.getState().setActiveTag(tagId);
@@ -203,11 +174,6 @@ export function PlayerPlaylist() {
         {currentItemId && (
           <span title="Tiempo restante">Restante: {formatDuration(totalRemaining)}</span>
         )}
-        {timeUntilSong !== null && timeUntilItemId !== null && (
-          <span className="text-accent" title="Tiempo hasta canción seleccionada">
-            Hasta #{filteredItems.findIndex(i => i.id === timeUntilItemId) + 1}: {formatDuration(timeUntilSong)}
-          </span>
-        )}
       </div>
 
       {/* Queue */}
@@ -240,8 +206,6 @@ export function PlayerPlaylist() {
               const isPlayed = playedSongIds.has(item.song_id);
               const isCurrent = item.id === currentItemId;
               const isNext = nextUpItem?.id === item.id && !isCurrent;
-              const isQuickEditing = quickEditItemId === item.id;
-
               return (
                 <div key={item.id}>
                   <div
@@ -290,45 +254,6 @@ export function PlayerPlaylist() {
                       {formatTime(item.song.duration_seconds)}
                     </span>
 
-                    {/* Quick transition editor toggle */}
-                    {!restrictedMode && (
-                      <button
-                        onClick={() => setQuickEditItemId(isQuickEditing ? null : item.id)}
-                        className={`p-2 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center flex-shrink-0 ${
-                          isQuickEditing ? 'text-accent' : 'text-text-muted hover:text-accent'
-                        }`}
-                        title="Editar transicion"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="4" y1="21" x2="4" y2="14" />
-                          <line x1="4" y1="10" x2="4" y2="3" />
-                          <line x1="12" y1="21" x2="12" y2="12" />
-                          <line x1="12" y1="8" x2="12" y2="3" />
-                          <line x1="20" y1="21" x2="20" y2="16" />
-                          <line x1="20" y1="12" x2="20" y2="3" />
-                          <line x1="1" y1="14" x2="7" y2="14" />
-                          <line x1="9" y1="8" x2="15" y2="8" />
-                          <line x1="17" y1="16" x2="23" y2="16" />
-                        </svg>
-                      </button>
-                    )}
-
-                    {/* Time until this song */}
-                    {!isCurrent && (
-                      <button
-                        onClick={() => handleTimeUntilToggle(item.id)}
-                        className={`p-2 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center flex-shrink-0 ${
-                          timeUntilItemId === item.id ? 'text-accent' : 'text-text-muted hover:text-accent'
-                        }`}
-                        title="Ver tiempo hasta esta cancion"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                      </button>
-                    )}
-
                     {/* Add to queue */}
                     <button
                       onClick={() => handleAddToQueue(item)}
@@ -342,15 +267,6 @@ export function PlayerPlaylist() {
                     </button>
 
                   </div>
-
-                  {/* Inline transition editor */}
-                  {isQuickEditing && (
-                    <InlineTransitionEditor
-                      item={item}
-                      nextItem={searchedItems[index + 1] ?? null}
-                      onClose={() => setQuickEditItemId(null)}
-                    />
-                  )}
                 </div>
               );
             })}

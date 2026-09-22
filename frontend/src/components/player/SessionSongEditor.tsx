@@ -144,6 +144,7 @@ export function SessionSongEditor() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [clipHistory, setClipHistory] = useState<Clip[][]>([]);
   const [saving, setSaving] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -156,7 +157,6 @@ export function SessionSongEditor() {
   const waveContainerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const regionsRef = useRef<RegionsPlugin | null>(null);
-  const loadedSongId = useRef<number | null>(null);
   const clipsRef = useRef<Clip[]>([]);
   const playerTimeRef = useRef(playerCurrentTime);
   const startTimeRef = useRef(startTime);
@@ -274,19 +274,29 @@ export function SessionSongEditor() {
     setSelectedClipId(null);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
 
-  // --- WaveSurfer (visual only — same pattern as NowPlaying) ---
+  // --- WaveSurfer lifecycle: recreate per song, pass peaks to constructor ---
 
   useEffect(() => {
-    if (!waveContainerRef.current) return;
-    const regionsPlugin = RegionsPlugin.create();
+    if (!waveContainerRef.current || !song) return;
 
-    const ws = WaveSurfer.create({
+    setIsLoading(true);
+    setLoadError(null);
+    setWsDuration(0);
+    setZoomLevel(1);
+    setClips([]);
+    setSelectedClipId(null);
+    setClipHistory([]);
+
+    const regionsPlugin = RegionsPlugin.create();
+    let cancelled = false;
+
+    const wsOptions: any = {
       container: waveContainerRef.current,
       waveColor: 'rgba(99, 102, 241, 0.35)',
       progressColor: 'rgba(99, 102, 241, 0.8)',
       cursorColor: 'rgba(255, 255, 255, 0.8)',
       cursorWidth: 2,
-      height: 'auto' as any,
+      height: 'auto',
       barWidth: 2,
       barGap: 1,
       barRadius: 1,
@@ -304,7 +314,20 @@ export function SessionSongEditor() {
         }),
         regionsPlugin,
       ],
-    });
+    };
+
+    // Pass peaks directly to constructor for instant rendering (no URL needed)
+    let needsBlobLoad = true;
+    if (song.waveform_peaks) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        wsOptions.peaks = [peaks];
+        wsOptions.duration = song.duration_seconds;
+        needsBlobLoad = false;
+      } catch { /* parse failed, will load via blob */ }
+    }
+
+    const ws = WaveSurfer.create(wsOptions);
 
     ws.on('ready', () => {
       setWsDuration(ws.getDuration());
@@ -316,8 +339,6 @@ export function SessionSongEditor() {
       setIsLoading(false);
       setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
     });
-
-    // Click → seek PlaybackEngine
     ws.on('click', (relativeX: number) => {
       const dur = ws.getDuration();
       if (dur <= 0) return;
@@ -328,10 +349,34 @@ export function SessionSongEditor() {
       if (clip) setSelectedClipId(clip.id);
     });
 
+    if (needsBlobLoad) {
+      (async () => {
+        try {
+          const response = await fetch(api.streamUrl(song.id));
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (cancelled) return;
+          const blob = await response.blob();
+          if (cancelled) return;
+          const blobUrl = URL.createObjectURL(blob);
+          ws.load(blobUrl);
+          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+          ws.once('error', () => URL.revokeObjectURL(blobUrl));
+        } catch (err: any) {
+          if (!cancelled) { setLoadError(`Error al cargar: ${err.message}`); setIsLoading(false); }
+        }
+      })();
+    }
+
     wsRef.current = ws;
     regionsRef.current = regionsPlugin;
-    return () => { ws.destroy(); wsRef.current = null; regionsRef.current = null; };
-  }, []);
+
+    return () => {
+      cancelled = true;
+      ws.destroy();
+      wsRef.current = null;
+      regionsRef.current = null;
+    };
+  }, [song?.id, retryKey]);
 
   // --- Keyboard shortcuts ---
 
@@ -365,52 +410,6 @@ export function SessionSongEditor() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [splitAtPlayhead, toggleClipMute, resetClipToKeep, undo, selectedClipId]);
-
-  // --- Load waveform (peaks preferred, blob URL fallback) ---
-
-  useEffect(() => {
-    if (!wsRef.current || !song || song.id === loadedSongId.current) return;
-    loadedSongId.current = song.id;
-    setIsLoading(true);
-    setLoadError(null);
-    setWsDuration(0);
-    setZoomLevel(1);
-    setClips([]);
-    setSelectedClipId(null);
-    setClipHistory([]);
-
-    const ws = wsRef.current;
-    let cancelled = false;
-
-    const loadViaBlob = async () => {
-      try {
-        const response = await fetch(api.streamUrl(song!.id));
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (cancelled) return;
-        const blob = await response.blob();
-        if (cancelled) return;
-        const blobUrl = URL.createObjectURL(blob);
-        ws.load(blobUrl);
-        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-        ws.once('error', () => URL.revokeObjectURL(blobUrl));
-      } catch (err: any) {
-        if (!cancelled) { setLoadError(`Error al cargar: ${err.message}`); setIsLoading(false); }
-      }
-    };
-
-    if (song.waveform_peaks) {
-      try {
-        const peaks: number[] = JSON.parse(song.waveform_peaks);
-        ws.load('', [peaks], song.duration_seconds);
-      } catch {
-        loadViaBlob();
-      }
-    } else {
-      loadViaBlob();
-    }
-
-    return () => { cancelled = true; };
-  }, [song?.id]);
 
   // --- Init clips on duration ready ---
 
@@ -720,7 +719,7 @@ export function SessionSongEditor() {
         {loadError && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-bg-primary/95 gap-1.5">
             <span className="text-xs text-danger">{loadError}</span>
-            <button onClick={() => { loadedSongId.current = null; setIsLoading(true); setLoadError(null); }}
+            <button onClick={() => setRetryKey(k => k + 1)}
               className="text-[10px] text-accent hover:underline">Reintentar</button>
           </div>
         )}

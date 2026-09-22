@@ -207,7 +207,8 @@ function WaveformDeck({
     const regions = RegionsPlugin.create();
     regionsRef.current = regions;
 
-    const ws = WaveSurfer.create({
+    // Pass peaks to constructor for instant rendering
+    const wsOptions: any = {
       container: containerRef.current,
       waveColor: 'rgba(99, 102, 241, 0.4)',
       progressColor: 'rgba(99, 102, 241, 0.7)',
@@ -221,37 +222,39 @@ function WaveformDeck({
       interact: !restrictedMode,
       hideScrollbar: true,
       plugins: [regions],
-    });
+    };
 
+    let needsBlobLoad = true;
+    if (song.waveform_peaks) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        wsOptions.peaks = [peaks];
+        wsOptions.duration = song.duration_seconds;
+        needsBlobLoad = false;
+      } catch { /* parse failed */ }
+    }
+
+    const ws = WaveSurfer.create(wsOptions);
     wsRef.current = ws;
 
     let cancelled = false;
 
-    const loadViaBlob = async () => {
-      try {
-        const response = await fetch(api.streamUrl(song.id));
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (cancelled) return;
-        const blob = await response.blob();
-        if (cancelled) return;
-        const blobUrl = URL.createObjectURL(blob);
-        ws.load(blobUrl);
-        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-        ws.once('error', () => URL.revokeObjectURL(blobUrl));
-      } catch (err) {
-        console.error('WaveSurfer blob load failed:', err);
-      }
-    };
-
-    if (song.waveform_peaks) {
-      try {
-        const peaks: number[] = JSON.parse(song.waveform_peaks);
-        ws.load('', [peaks], song.duration_seconds);
-      } catch {
-        loadViaBlob();
-      }
-    } else {
-      loadViaBlob();
+    if (needsBlobLoad) {
+      (async () => {
+        try {
+          const response = await fetch(api.streamUrl(song.id));
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (cancelled) return;
+          const blob = await response.blob();
+          if (cancelled) return;
+          const blobUrl = URL.createObjectURL(blob);
+          ws.load(blobUrl);
+          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+          ws.once('error', () => URL.revokeObjectURL(blobUrl));
+        } catch (err) {
+          console.error('WaveSurfer blob load failed:', err);
+        }
+      })();
     }
 
     // Seek on click

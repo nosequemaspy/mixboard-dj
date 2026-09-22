@@ -80,16 +80,51 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
 
     wsRef.current = ws;
 
-    // Load waveform from pre-computed peaks or audio URL
+    // Load waveform from pre-computed peaks (passed to constructor) or blob URL
+    let needsBlobLoad = true;
     if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
-        ws.load('', [peaks], duration);
-      } catch {
-        ws.load(api.streamUrl(song.id));
-      }
-    } else {
-      ws.load(api.streamUrl(song.id));
+        // Destroy and recreate with peaks in constructor for reliable rendering
+        ws.destroy();
+        const ws2 = WaveSurfer.create({
+          container: containerRef.current!,
+          waveColor: 'rgba(var(--color-accent-rgb, 99, 102, 241), 0.5)',
+          progressColor: 'transparent',
+          cursorColor: 'transparent',
+          cursorWidth: 0,
+          height: 80,
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 1,
+          normalize: true,
+          interact: false,
+          hideScrollbar: true,
+          plugins: [regions],
+          peaks: [peaks],
+          duration,
+        });
+        wsRef.current = ws2;
+        needsBlobLoad = false;
+      } catch { /* parse failed */ }
+    }
+    if (needsBlobLoad) {
+      (async () => {
+        try {
+          const response = await fetch(api.streamUrl(song.id));
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const currentWs = wsRef.current;
+          if (currentWs) {
+            currentWs.load(blobUrl);
+            currentWs.once('ready', () => URL.revokeObjectURL(blobUrl));
+            currentWs.once('error', () => URL.revokeObjectURL(blobUrl));
+          }
+        } catch (err) {
+          console.error('InlineTransitionEditor blob load failed:', err);
+        }
+      })();
     }
 
     return () => {
