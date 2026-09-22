@@ -159,12 +159,19 @@ export function SessionSongEditor() {
   const loadedSongId = useRef<number | null>(null);
   const clipsRef = useRef<Clip[]>([]);
   const playerTimeRef = useRef(playerCurrentTime);
+  const startTimeRef = useRef(startTime);
+  const endTimeRef = useRef(endTime);
+  const transitionDurationRef = useRef(transitionDuration);
+  const updatingFromRegion = useRef(false);
 
   const selectedClip = clips.find(c => c.id === selectedClipId) ?? null;
   const mutedCount = clips.filter(c => c.status === 'mute').length;
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { playerTimeRef.current = playerCurrentTime; }, [playerCurrentTime]);
+  useEffect(() => { startTimeRef.current = startTime; }, [startTime]);
+  useEffect(() => { endTimeRef.current = endTime; }, [endTime]);
+  useEffect(() => { transitionDurationRef.current = transitionDuration; }, [transitionDuration]);
 
   // --- Sync stems_status from library store ---
   useEffect(() => {
@@ -359,7 +366,7 @@ export function SessionSongEditor() {
     return () => window.removeEventListener('keydown', handler);
   }, [splitAtPlayhead, toggleClipMute, resetClipToKeep, undo, selectedClipId]);
 
-  // --- Load waveform (peaks preferred, URL fallback) ---
+  // --- Load waveform (peaks preferred, blob URL fallback) ---
 
   useEffect(() => {
     if (!wsRef.current || !song || song.id === loadedSongId.current) return;
@@ -373,17 +380,36 @@ export function SessionSongEditor() {
     setClipHistory([]);
 
     const ws = wsRef.current;
+    let cancelled = false;
+
+    const loadViaBlob = async () => {
+      try {
+        const response = await fetch(api.streamUrl(song!.id));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (cancelled) return;
+        const blob = await response.blob();
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        ws.load(blobUrl);
+        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+        ws.once('error', () => URL.revokeObjectURL(blobUrl));
+      } catch (err: any) {
+        if (!cancelled) { setLoadError(`Error al cargar: ${err.message}`); setIsLoading(false); }
+      }
+    };
 
     if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
         ws.load('', [peaks], song.duration_seconds);
       } catch {
-        ws.load(api.streamUrl(song.id));
+        loadViaBlob();
       }
     } else {
-      ws.load(api.streamUrl(song.id));
+      loadViaBlob();
     }
+
+    return () => { cancelled = true; };
   }, [song?.id]);
 
   // --- Init clips on duration ready ---
@@ -404,40 +430,121 @@ export function SessionSongEditor() {
     try { ws.seekTo(Math.min(Math.max(playerCurrentTime / dur, 0), 1)); } catch {}
   }, [playerCurrentTime, song?.duration_seconds]);
 
-  // --- Sync region overlays ---
+  // --- Draw regions with draggable start/end handles (Filmora-style) ---
 
-  useEffect(() => {
+  const drawRegions = useCallback(() => {
     const rp = regionsRef.current;
     const dur = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? 0);
     if (!rp || dur === 0) return;
+
+    updatingFromRegion.current = true;
     rp.clearRegions();
 
-    const addSilent = (start: number, end: number, color: string) => {
+    const st = startTimeRef.current;
+    const et = endTimeRef.current;
+    const td = transitionDurationRef.current;
+
+    const addOverlay = (start: number, end: number, color: string) => {
       if (start >= end) return;
       const r = rp.addRegion({ start, end, color, drag: false, resize: false });
       try { (r as any).element.style.pointerEvents = 'none'; } catch {}
     };
 
     // Dimmed zones
-    if (startTime > 0.1) addSilent(0, startTime, 'rgba(0,0,0,0.45)');
-    if (endTime < dur - 0.1) addSilent(endTime, dur, 'rgba(0,0,0,0.45)');
+    if (st > 0.1) addOverlay(0, st, 'rgba(0,0,0,0.45)');
+    if (et < dur - 0.1) addOverlay(et, dur, 'rgba(0,0,0,0.45)');
 
     // Transition zone (amber)
-    const transStart = Math.max(startTime, endTime - transitionDuration);
-    if (transitionDuration > 0.1 && transStart < endTime)
-      addSilent(transStart, endTime, 'rgba(245,158,11,0.18)');
+    const transStart = Math.max(st, et - td);
+    if (td > 0.1 && transStart < et) addOverlay(transStart, et, 'rgba(245,158,11,0.18)');
 
     // Mute overlays (purple)
-    clips.forEach(c => { if (c.status === 'mute') addSilent(c.start, c.end, 'rgba(168,85,247,0.25)'); });
+    clipsRef.current.forEach(c => {
+      if (c.status === 'mute') addOverlay(c.start, c.end, 'rgba(168,85,247,0.25)');
+    });
 
     // Split lines
-    clips.forEach((c, i) => { if (i > 0) addSilent(c.start, c.start, 'rgba(148,163,184,0.5)'); });
+    clipsRef.current.forEach((c, i) => {
+      if (i > 0) addOverlay(c.start, c.start, 'rgba(148,163,184,0.5)');
+    });
 
-    // Start marker (green)
-    if (startTime > 0.05) addSilent(startTime, startTime, 'rgba(34,197,94,0.9)');
-    // End marker (red)
-    if (endTime < dur - 0.05) addSilent(endTime, endTime, 'rgba(239,68,68,0.9)');
-  }, [clips, wsDuration, startTime, endTime, transitionDuration, song?.duration_seconds]);
+    // === DRAGGABLE START HANDLE (green) ===
+    const startR = rp.addRegion({
+      id: 'start-handle',
+      start: st,
+      end: st,
+      color: 'rgba(34,197,94,0.9)',
+      drag: true,
+      resize: false,
+    });
+    try {
+      const el = (startR as any).element;
+      if (el) {
+        el.style.cursor = 'col-resize';
+        el.style.borderLeft = '4px solid rgb(34,197,94)';
+        el.style.boxShadow = '0 0 8px rgba(34,197,94,0.5)';
+        el.style.zIndex = '5';
+      }
+    } catch {}
+
+    // === DRAGGABLE END HANDLE (red) ===
+    const endR = rp.addRegion({
+      id: 'end-handle',
+      start: et,
+      end: et,
+      color: 'rgba(239,68,68,0.9)',
+      drag: true,
+      resize: false,
+    });
+    try {
+      const el = (endR as any).element;
+      if (el) {
+        el.style.cursor = 'col-resize';
+        el.style.borderLeft = '4px solid rgb(239,68,68)';
+        el.style.boxShadow = '0 0 8px rgba(239,68,68,0.5)';
+        el.style.zIndex = '5';
+      }
+    } catch {}
+
+    updatingFromRegion.current = false;
+  }, [wsDuration, song?.duration_seconds]);
+
+  // --- Region event listeners for draggable handles ---
+
+  useEffect(() => {
+    const rp = regionsRef.current;
+    const ws = wsRef.current;
+    if (!rp || !ws) return;
+
+    const onReady = () => drawRegions();
+    ws.on('ready', onReady);
+
+    const onRegionUpdated = (region: any) => {
+      if (updatingFromRegion.current) return;
+      const dur = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? 0);
+
+      if (region.id === 'start-handle') {
+        const newStart = Math.max(0, Math.min(region.start, endTimeRef.current - 1));
+        setStartTime(Math.round(newStart * 10) / 10);
+      } else if (region.id === 'end-handle') {
+        const newEnd = Math.max(startTimeRef.current + 1, Math.min(region.start, dur));
+        setEndTime(Math.round(newEnd * 10) / 10);
+      }
+    };
+
+    rp.on('region-updated', onRegionUpdated);
+
+    return () => {
+      ws.un('ready', onReady);
+      rp.un('region-updated', onRegionUpdated);
+    };
+  }, [wsDuration, song?.duration_seconds, drawRegions]);
+
+  // --- Redraw regions when values change ---
+
+  useEffect(() => {
+    drawRegions();
+  }, [startTime, endTime, transitionDuration, clips, drawRegions]);
 
   // --- Handlers ---
 
@@ -618,6 +725,23 @@ export function SessionSongEditor() {
           </div>
         )}
         <div ref={waveContainerRef} className="w-full h-full" />
+        {/* Legend for draggable handles */}
+        {wsDuration > 0 && !isLoading && !loadError && (
+          <div className="absolute top-1 right-1 flex gap-2 text-[9px] pointer-events-none z-10">
+            <span className="flex items-center gap-0.5 text-green-400 bg-black/40 px-1.5 py-0.5 rounded">
+              <span className="w-1 h-2.5 bg-green-500 rounded-sm inline-block" />
+              Inicio
+            </span>
+            <span className="flex items-center gap-0.5 text-red-400 bg-black/40 px-1.5 py-0.5 rounded">
+              <span className="w-1 h-2.5 bg-red-500 rounded-sm inline-block" />
+              Final
+            </span>
+            <span className="flex items-center gap-0.5 text-amber-400 bg-black/40 px-1.5 py-0.5 rounded">
+              <span className="w-2 h-2.5 bg-amber-500/40 rounded-sm inline-block" />
+              Trans
+            </span>
+          </div>
+        )}
       </div>
 
       {/* === Clip Track === */}

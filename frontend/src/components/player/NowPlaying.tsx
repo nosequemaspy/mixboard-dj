@@ -225,15 +225,33 @@ function WaveformDeck({
 
     wsRef.current = ws;
 
+    let cancelled = false;
+
+    const loadViaBlob = async () => {
+      try {
+        const response = await fetch(api.streamUrl(song.id));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (cancelled) return;
+        const blob = await response.blob();
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        ws.load(blobUrl);
+        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+        ws.once('error', () => URL.revokeObjectURL(blobUrl));
+      } catch (err) {
+        console.error('WaveSurfer blob load failed:', err);
+      }
+    };
+
     if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
         ws.load('', [peaks], song.duration_seconds);
       } catch {
-        ws.load(api.streamUrl(song.id));
+        loadViaBlob();
       }
     } else {
-      ws.load(api.streamUrl(song.id));
+      loadViaBlob();
     }
 
     // Seek on click
@@ -245,6 +263,7 @@ function WaveformDeck({
     });
 
     return () => {
+      cancelled = true;
       ws.destroy();
       wsRef.current = null;
       regionsRef.current = null;
