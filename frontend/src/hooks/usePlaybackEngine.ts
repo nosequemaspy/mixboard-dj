@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { PlaybackEngine } from '../audio/PlaybackEngine';
 import { usePlayerStore } from '../store/playerStore';
+import { useDeckStore } from '../store/deckStore';
 import { getAudioEngine } from './useAudioEngine';
 
 let playbackEngineInstance: PlaybackEngine | null = null;
@@ -78,6 +79,18 @@ export function usePlaybackEngine() {
     return () => {
       unsub();
       engine.deactivate();
+
+      // Restore AudioEngine callbacks for DJ mixer deck mode
+      const audioEngine = getAudioEngine();
+      audioEngine.setCallbacks(
+        (deckId, time) => {
+          useDeckStore.getState().setCurrentTime(deckId, time);
+        },
+        (deckId) => {
+          useDeckStore.getState().setPlaying(deckId, false);
+          useDeckStore.getState().setCurrentTime(deckId, 0);
+        },
+      );
     };
   }, []);
 

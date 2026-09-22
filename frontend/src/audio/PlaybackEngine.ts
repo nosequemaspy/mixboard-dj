@@ -87,6 +87,8 @@ export class PlaybackEngine {
       cancelAnimationFrame(this.crossfadeAnimId);
       this.crossfadeAnimId = null;
     }
+    // Reset crossfader to center so both DJ mixer decks are audible
+    this.engine.setCrossfader(0);
   }
 
   private startMonitor() {
