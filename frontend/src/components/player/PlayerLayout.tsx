@@ -131,22 +131,20 @@ export function PlayerLayout() {
 
       {activeSession ? (
         <>
+          {/* Editor panel at the top (editable mode + song selected) */}
           {!restrictedMode && currentItemId ? (
-            // Full editor mode
-            <SessionSongEditor />
+            <div className="flex-shrink-0">
+              <SessionSongEditor />
+            </div>
           ) : (
-            // Compact mode (restricted or no song)
-            <>
-              <div className="flex-shrink-0 border-b border-border">
-                <NowPlaying />
-              </div>
-              <PlayerPlaylist />
-            </>
+            <div className="flex-shrink-0 border-b border-border">
+              <NowPlaying />
+            </div>
           )}
 
           {/* Transition indicator */}
           {isTransitioning && nextTransitionSongTitle && (
-            <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-accent/10 border-b border-accent/20">
+            <div className="flex-shrink-0 flex items-center gap-3 px-4 py-1.5 bg-accent/10 border-b border-accent/20">
               <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
@@ -161,6 +159,9 @@ export function PlayerLayout() {
           <div className="flex-shrink-0 border-b border-border bg-bg-secondary">
             <PlayerControls />
           </div>
+
+          {/* Playlist (always visible, scrollable) */}
+          <PlayerPlaylist />
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center">
