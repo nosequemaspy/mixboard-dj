@@ -207,7 +207,8 @@ function WaveformDeck({
     const regions = RegionsPlugin.create();
     regionsRef.current = regions;
 
-    const ws = WaveSurfer.create({
+    // Use pre-computed peaks when available (instant, no download needed)
+    const wsOptions: any = {
       container: containerRef.current,
       waveColor: 'rgba(99, 102, 241, 0.4)',
       progressColor: 'rgba(99, 102, 241, 0.7)',
@@ -221,35 +222,51 @@ function WaveformDeck({
       interact: !restrictedMode,
       hideScrollbar: true,
       plugins: [regions],
-    });
+    };
+
+    let usedPeaks = false;
+    if (song.waveform_peaks) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        if (peaks.length > 0) {
+          wsOptions.peaks = [peaks];
+          wsOptions.duration = song.duration_seconds;
+          usedPeaks = true;
+        }
+      } catch {}
+    }
+
+    const ws = WaveSurfer.create(wsOptions);
     wsRef.current = ws;
 
-    // Always load via blob URL with retry
+    // Only fetch blob if no peaks available
     let cancelled = false;
-    (async () => {
-      for (let attempt = 0; attempt <= 2; attempt++) {
-        try {
-          if (cancelled) return;
-          const response = await fetch(api.streamUrl(song.id));
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          if (cancelled) return;
-          const blob = await response.blob();
-          if (cancelled) return;
-          const blobUrl = URL.createObjectURL(blob);
-          ws.load(blobUrl);
-          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-          ws.once('error', () => URL.revokeObjectURL(blobUrl));
-          return;
-        } catch (err) {
-          if (cancelled) return;
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, 1500));
-          } else {
-            console.error('WaveSurfer blob load failed after retries:', err);
+    if (!usedPeaks) {
+      (async () => {
+        for (let attempt = 0; attempt <= 2; attempt++) {
+          try {
+            if (cancelled) return;
+            const response = await fetch(api.streamUrl(song.id));
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (cancelled) return;
+            const blob = await response.blob();
+            if (cancelled) return;
+            const blobUrl = URL.createObjectURL(blob);
+            ws.load(blobUrl);
+            ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+            ws.once('error', () => URL.revokeObjectURL(blobUrl));
+            return;
+          } catch (err) {
+            if (cancelled) return;
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1500));
+            } else {
+              console.error('WaveSurfer blob load failed after retries:', err);
+            }
           }
         }
-      }
-    })();
+      })();
+    }
 
     // Seek on click
     ws.on('click', (relativeX: number) => {

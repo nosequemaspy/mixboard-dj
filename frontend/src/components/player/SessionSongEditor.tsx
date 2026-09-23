@@ -274,7 +274,7 @@ export function SessionSongEditor() {
     setSelectedClipId(null);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
 
-  // --- WaveSurfer lifecycle: recreate per song, always load via blob URL ---
+  // --- WaveSurfer lifecycle: use pre-computed peaks when available, blob fallback ---
 
   useEffect(() => {
     if (!waveContainerRef.current || !song) return;
@@ -288,14 +288,16 @@ export function SessionSongEditor() {
     setClipHistory([]);
 
     const regionsPlugin = RegionsPlugin.create();
+    let cancelled = false;
+    let usedPeaks = false;
 
-    const ws = WaveSurfer.create({
+    const wsOptions: any = {
       container: waveContainerRef.current,
       waveColor: 'rgba(99, 102, 241, 0.35)',
       progressColor: 'rgba(99, 102, 241, 0.8)',
       cursorColor: 'rgba(255, 255, 255, 0.8)',
       cursorWidth: 2,
-      height: 'auto' as any,
+      height: 'auto',
       barWidth: 2,
       barGap: 1,
       barRadius: 1,
@@ -313,18 +315,35 @@ export function SessionSongEditor() {
         }),
         regionsPlugin,
       ],
-    });
+    };
+
+    // Use pre-computed peaks for instant rendering (no audio download needed)
+    if (song.waveform_peaks) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        if (peaks.length > 0) {
+          wsOptions.peaks = [peaks];
+          wsOptions.duration = song.duration_seconds;
+          usedPeaks = true;
+        }
+      } catch { /* parse failed, will load via blob */ }
+    }
+
+    const ws = WaveSurfer.create(wsOptions);
 
     ws.on('ready', () => {
       setWsDuration(ws.getDuration());
       setIsLoading(false);
       setLoadError(null);
     });
-    ws.on('error', (err: any) => {
-      console.error('WaveSurfer error:', err);
-      setIsLoading(false);
-      setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
-    });
+    if (!usedPeaks) {
+      // Only show errors when loading from blob (peaks mode has expected media element errors)
+      ws.on('error', (err: any) => {
+        console.error('WaveSurfer error:', err);
+        setIsLoading(false);
+        setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
+      });
+    }
     ws.on('click', (relativeX: number) => {
       const dur = ws.getDuration();
       if (dur <= 0) return;
@@ -338,36 +357,39 @@ export function SessionSongEditor() {
     wsRef.current = ws;
     regionsRef.current = regionsPlugin;
 
-    let cancelled = false;
-
-    // Fetch blob with retry (avoids race with PlaybackEngine's simultaneous fetch)
-    const fetchWithRetry = async (retries = 2, delay = 1500) => {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          if (cancelled) return;
-          const response = await fetch(api.streamUrl(song.id));
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          if (cancelled) return;
-          const blob = await response.blob();
-          if (cancelled) return;
-          const blobUrl = URL.createObjectURL(blob);
-          ws.load(blobUrl);
-          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-          ws.once('error', () => URL.revokeObjectURL(blobUrl));
-          return; // success
-        } catch (err: any) {
-          if (cancelled) return;
-          if (attempt < retries) {
-            await new Promise(r => setTimeout(r, delay));
-          } else {
-            setLoadError(`Error al cargar: ${err.message}`);
-            setIsLoading(false);
+    if (usedPeaks) {
+      // Peaks render instantly — set state directly as fallback in case 'ready' doesn't fire
+      setWsDuration(song.duration_seconds);
+      setIsLoading(false);
+    } else {
+      // No peaks available — fetch audio blob with retry
+      const fetchWithRetry = async (retries = 2, delay = 1500) => {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            if (cancelled) return;
+            const response = await fetch(api.streamUrl(song.id));
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (cancelled) return;
+            const blob = await response.blob();
+            if (cancelled) return;
+            const blobUrl = URL.createObjectURL(blob);
+            ws.load(blobUrl);
+            ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+            ws.once('error', () => URL.revokeObjectURL(blobUrl));
+            return;
+          } catch (err: any) {
+            if (cancelled) return;
+            if (attempt < retries) {
+              await new Promise(r => setTimeout(r, delay));
+            } else {
+              setLoadError(`Error al cargar: ${err.message}`);
+              setIsLoading(false);
+            }
           }
         }
-      }
-    };
-
-    fetchWithRetry();
+      };
+      fetchWithRetry();
+    }
 
     return () => {
       cancelled = true;

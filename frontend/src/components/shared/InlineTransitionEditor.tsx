@@ -62,7 +62,8 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
     const regions = RegionsPlugin.create();
     regionsRef.current = regions;
 
-    const ws = WaveSurfer.create({
+    // Use pre-computed peaks when available (instant, no download needed)
+    const wsOptions: any = {
       container: containerRef.current,
       waveColor: 'rgba(var(--color-accent-rgb, 99, 102, 241), 0.5)',
       progressColor: 'transparent',
@@ -76,27 +77,42 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
       interact: false,
       hideScrollbar: true,
       plugins: [regions],
-    });
+    };
 
+    let usedPeaks = false;
+    if (song.waveform_peaks) {
+      try {
+        const peaks: number[] = JSON.parse(song.waveform_peaks);
+        if (peaks.length > 0) {
+          wsOptions.peaks = [peaks];
+          wsOptions.duration = duration;
+          usedPeaks = true;
+        }
+      } catch {}
+    }
+
+    const ws = WaveSurfer.create(wsOptions);
     wsRef.current = ws;
 
-    // Always load via blob URL (peaks constructor causes media element errors)
+    // Only fetch blob if no peaks available
     let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(api.streamUrl(song.id));
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (cancelled) return;
-        const blob = await response.blob();
-        if (cancelled) return;
-        const blobUrl = URL.createObjectURL(blob);
-        ws.load(blobUrl);
-        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-        ws.once('error', () => URL.revokeObjectURL(blobUrl));
-      } catch (err) {
-        console.error('InlineTransitionEditor blob load failed:', err);
-      }
-    })();
+    if (!usedPeaks) {
+      (async () => {
+        try {
+          const response = await fetch(api.streamUrl(song.id));
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (cancelled) return;
+          const blob = await response.blob();
+          if (cancelled) return;
+          const blobUrl = URL.createObjectURL(blob);
+          ws.load(blobUrl);
+          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+          ws.once('error', () => URL.revokeObjectURL(blobUrl));
+        } catch (err) {
+          console.error('InlineTransitionEditor blob load failed:', err);
+        }
+      })();
+    }
 
     return () => {
       cancelled = true;
