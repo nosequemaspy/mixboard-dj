@@ -274,29 +274,20 @@ export function SessionSongEditor() {
     setSelectedClipId(null);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
 
-  // --- WaveSurfer lifecycle: recreate per song, pass peaks to constructor ---
+  // --- WaveSurfer lifecycle: create once (same pattern as AudioEditor) ---
 
   useEffect(() => {
-    if (!waveContainerRef.current || !song) return;
-
-    setIsLoading(true);
-    setLoadError(null);
-    setWsDuration(0);
-    setZoomLevel(1);
-    setClips([]);
-    setSelectedClipId(null);
-    setClipHistory([]);
+    if (!waveContainerRef.current) return;
 
     const regionsPlugin = RegionsPlugin.create();
-    let cancelled = false;
 
-    const wsOptions: any = {
+    const ws = WaveSurfer.create({
       container: waveContainerRef.current,
       waveColor: 'rgba(99, 102, 241, 0.35)',
       progressColor: 'rgba(99, 102, 241, 0.8)',
       cursorColor: 'rgba(255, 255, 255, 0.8)',
       cursorWidth: 2,
-      height: 'auto',
+      height: 'auto' as any,
       barWidth: 2,
       barGap: 1,
       barRadius: 1,
@@ -314,20 +305,7 @@ export function SessionSongEditor() {
         }),
         regionsPlugin,
       ],
-    };
-
-    // Pass peaks directly to constructor for instant rendering (no URL needed)
-    let needsBlobLoad = true;
-    if (song.waveform_peaks) {
-      try {
-        const peaks: number[] = JSON.parse(song.waveform_peaks);
-        wsOptions.peaks = [peaks];
-        wsOptions.duration = song.duration_seconds;
-        needsBlobLoad = false;
-      } catch { /* parse failed, will load via blob */ }
-    }
-
-    const ws = WaveSurfer.create(wsOptions);
+    });
 
     ws.on('ready', () => {
       setWsDuration(ws.getDuration());
@@ -349,33 +327,53 @@ export function SessionSongEditor() {
       if (clip) setSelectedClipId(clip.id);
     });
 
-    if (needsBlobLoad) {
-      (async () => {
-        try {
-          const response = await fetch(api.streamUrl(song.id));
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          if (cancelled) return;
-          const blob = await response.blob();
-          if (cancelled) return;
-          const blobUrl = URL.createObjectURL(blob);
-          ws.load(blobUrl);
-          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-          ws.once('error', () => URL.revokeObjectURL(blobUrl));
-        } catch (err: any) {
-          if (!cancelled) { setLoadError(`Error al cargar: ${err.message}`); setIsLoading(false); }
-        }
-      })();
-    }
-
     wsRef.current = ws;
     regionsRef.current = regionsPlugin;
 
     return () => {
-      cancelled = true;
       ws.destroy();
       wsRef.current = null;
       regionsRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // --- Load song via blob URL (same pattern as AudioEditor) ---
+
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws || !song) return;
+
+    setIsLoading(true);
+    setLoadError(null);
+    setWsDuration(0);
+    setZoomLevel(1);
+    setClips([]);
+    setSelectedClipId(null);
+    setClipHistory([]);
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(api.streamUrl(song.id));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (cancelled) return;
+        const blob = await response.blob();
+        if (cancelled) return;
+        const blobUrl = URL.createObjectURL(blob);
+        ws.load(blobUrl);
+        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+        ws.once('error', () => URL.revokeObjectURL(blobUrl));
+      } catch (err: any) {
+        if (!cancelled) {
+          setLoadError(`Error al cargar: ${err.message}`);
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [song?.id, retryKey]);
 
   // --- Keyboard shortcuts ---
