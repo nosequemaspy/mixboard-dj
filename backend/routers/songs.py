@@ -4,7 +4,7 @@ import shutil
 import unicodedata
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File, Form, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from config import SONGS_DIR, STEMS_DIR, EDITS_DIR, SUPPORTED_FORMATS, MAX_UPLOAD_SIZE_MB
@@ -175,34 +175,52 @@ def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
     return song
 
 
+def _reanalyze_sync(song_ids: list[int]):
+    """Background task: generate peaks for songs missing them (one by one, commits each)."""
+    from database import SessionLocal
+    from services.analysis import analyze_audio_fast as analyze
+    db = SessionLocal()
+    try:
+        updated = 0
+        for sid in song_ids:
+            song = db.query(Song).filter(Song.id == sid).first()
+            if not song:
+                continue
+            file_path = Path(song.file_path)
+            if not file_path.is_absolute():
+                file_path = SONGS_DIR.parent.parent / file_path
+            if not file_path.exists():
+                continue
+            try:
+                analysis = analyze(str(file_path))
+                changed = False
+                if analysis["duration_seconds"] > 0 and song.duration_seconds <= 0:
+                    song.duration_seconds = analysis["duration_seconds"]
+                    changed = True
+                if analysis.get("waveform_peaks") and not song.waveform_peaks:
+                    song.waveform_peaks = analysis["waveform_peaks"]
+                    changed = True
+                if changed:
+                    db.commit()
+                    updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to analyze song {sid}: {e}")
+                db.rollback()
+        logger.info(f"Reanalyze done: {updated}/{len(song_ids)} updated")
+    finally:
+        db.close()
+
+
 @router.post("/reanalyze")
-async def reanalyze_songs(db: Session = Depends(get_db)):
-    """Re-analyze songs: fix missing durations and generate waveform peaks."""
+async def reanalyze_songs(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Queue background re-analysis for songs missing peaks or duration."""
     songs = db.query(Song).filter(
         (Song.duration_seconds <= 0) | (Song.waveform_peaks == None) | (Song.waveform_peaks == "")
     ).all()
-    updated = 0
-    for song in songs:
-        file_path = Path(song.file_path)
-        if not file_path.is_absolute():
-            file_path = SONGS_DIR.parent.parent / file_path
-        if not file_path.exists():
-            continue
-        try:
-            analysis = await asyncio.to_thread(analyze_audio_fast, str(file_path))
-            changed = False
-            if analysis["duration_seconds"] > 0 and song.duration_seconds <= 0:
-                song.duration_seconds = analysis["duration_seconds"]
-                changed = True
-            if analysis.get("waveform_peaks") and not song.waveform_peaks:
-                song.waveform_peaks = analysis["waveform_peaks"]
-                changed = True
-            if changed:
-                updated += 1
-        except Exception as e:
-            logger.warning(f"Failed to analyze song {song.id}: {e}")
-    db.commit()
-    return {"analyzed": len(songs), "updated": updated}
+    song_ids = [s.id for s in songs]
+    if song_ids:
+        background_tasks.add_task(_reanalyze_sync, song_ids)
+    return {"queued": len(song_ids), "message": f"{len(song_ids)} songs queued for peak generation"}
 
 
 @router.get("/{song_id}/playback-settings", response_model=PlaybackSettingsResponse)
