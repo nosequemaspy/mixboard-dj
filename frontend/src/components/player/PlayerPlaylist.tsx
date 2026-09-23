@@ -209,7 +209,7 @@ export function PlayerPlaylist() {
               return (
                 <div key={item.id}>
                   <div
-                    className={`flex items-center gap-2 px-4 py-2 transition-colors ${
+                    className={`flex items-center gap-2 px-4 py-2 transition-colors overflow-hidden ${
                       isCurrent
                         ? 'bg-accent/10'
                         : isNext

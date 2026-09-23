@@ -133,7 +133,7 @@ export function PlayerLayout() {
         <>
           {/* Editor panel at the top (editable mode + song selected) */}
           {!restrictedMode && currentItemId ? (
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 max-h-[55vh] sm:max-h-none overflow-y-auto overflow-x-hidden overscroll-contain">
               <SessionSongEditor />
             </div>
           ) : (

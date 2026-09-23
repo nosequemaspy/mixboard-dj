@@ -106,11 +106,11 @@ export function PlayerControls() {
   };
 
   return (
-    <div className="flex items-center justify-center gap-6 py-3 px-4">
+    <div className="flex items-center justify-center gap-3 sm:gap-6 py-2 sm:py-3 px-2 sm:px-4 overflow-hidden">
       {/* Shuffle */}
       <button
         onClick={handleShuffle}
-        className={`p-3 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
+        className={`p-2 sm:p-3 rounded-full transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center ${
           shuffleEnabled
             ? 'text-accent bg-accent/15'
             : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'
@@ -129,7 +129,7 @@ export function PlayerControls() {
       {/* Previous */}
       <button
         onClick={handlePrev}
-        className="p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+        className="p-2 sm:p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center"
         title="Anterior"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -140,7 +140,7 @@ export function PlayerControls() {
       {/* Play/Pause — 64px */}
       <button
         onClick={handlePlayPause}
-        className="w-16 h-16 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-colors shadow-lg"
+        className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-colors shadow-lg flex-shrink-0"
         title={isPlaying ? 'Pausar' : 'Reproducir'}
       >
         {isPlaying ? (
@@ -157,7 +157,7 @@ export function PlayerControls() {
       {/* Next */}
       <button
         onClick={handleNext}
-        className="p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center"
+        className="p-2 sm:p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center"
         title="Siguiente"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -169,7 +169,7 @@ export function PlayerControls() {
       {!restrictedMode && (
         <button
           onClick={handleSpeedCycle}
-          className={`p-3 rounded-full transition-colors min-w-[48px] min-h-[48px] flex items-center justify-center ${
+          className={`p-2 sm:p-3 rounded-full transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center ${
             speed !== 1.0
               ? 'text-accent bg-accent/15'
               : 'text-text-muted hover:text-text-primary hover:bg-bg-tertiary'

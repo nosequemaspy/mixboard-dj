@@ -61,7 +61,7 @@ function TBtn({ icon, label, shortcut, onClick, disabled, active, activeClass }:
       onClick={onClick}
       disabled={disabled}
       title={shortcut ? `${label} (${shortcut})` : label}
-      className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition-all min-h-[36px] sm:min-h-0
         ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-bg-hover'}
         ${active && activeClass ? activeClass : active ? 'bg-accent/20 text-accent' : 'text-text-secondary hover:text-text-primary'}
       `}
@@ -145,6 +145,7 @@ export function SessionSongEditor() {
   const [clipHistory, setClipHistory] = useState<Clip[][]>([]);
   const [saving, setSaving] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [showMobileControls, setShowMobileControls] = useState(false);
 
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -653,7 +654,7 @@ export function SessionSongEditor() {
     <div className="flex flex-col border-b border-border bg-bg-primary">
 
       {/* === Header: Song info + Play + Zoom === */}
-      <div className="flex items-center gap-2 px-3 py-1 border-b border-border/50 bg-bg-secondary/40">
+      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 border-b border-border/50 bg-bg-secondary/40 overflow-hidden">
         <button
           onClick={handlePlayPause}
           className="w-7 h-7 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-colors flex-shrink-0"
@@ -665,43 +666,51 @@ export function SessionSongEditor() {
           )}
         </button>
 
-        <span className="text-[11px] font-mono text-accent tabular-nums">{fmt(playerCurrentTime)}</span>
-        <span className="text-[10px] text-text-muted/40">/</span>
-        <span className="text-[11px] font-mono text-text-muted tabular-nums">{fmt(displayDuration)}</span>
+        <span className="text-[11px] font-mono text-accent tabular-nums shrink-0">{fmt(playerCurrentTime)}</span>
+        <span className="text-[10px] text-text-muted/40 hidden sm:inline">/</span>
+        <span className="text-[11px] font-mono text-text-muted tabular-nums hidden sm:inline">{fmt(displayDuration)}</span>
 
-        <div className="w-px h-4 bg-border/30" />
+        <div className="w-px h-4 bg-border/30 shrink-0 hidden sm:block" />
 
-        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
           {itemFolder && (
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: itemFolder.color }} title={itemFolder.name} />
+            <span className="w-2 h-2 rounded-full shrink-0 hidden sm:inline-block" style={{ backgroundColor: itemFolder.color }} title={itemFolder.name} />
           )}
           <span className="text-[11px] text-text-primary font-medium truncate">{song.title}</span>
           <span className="text-[10px] text-text-muted truncate hidden sm:inline">{song.artist}</span>
         </div>
 
+        {/* Mobile toolbar buttons (hidden on sm+) */}
+        <div className="flex items-center shrink-0 sm:hidden">
+          <TBtn icon={<IconScissors />} label="Dividir" onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
+          <TBtn icon={<IconMicOff />} label="Mute" onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
+            active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
+          <TBtn icon={<IconUndo />} label="Deshacer" onClick={undo} disabled={clipHistory.length === 0} />
+        </div>
+
         {canMuteVocals ? (
-          <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold shrink-0">STEMS</span>
+          <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded font-bold shrink-0 hidden sm:inline">STEMS</span>
         ) : (
           <button onClick={handleSeparateStems} disabled={separatingStems}
-            className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 transition-all ${
+            className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 transition-all hidden sm:inline ${
               separatingStems ? 'bg-warning/15 text-warning animate-pulse' : 'bg-accent/10 text-accent hover:bg-accent/20'
             }`}
           >{separatingStems ? 'SEPARANDO...' : 'STEMS'}</button>
         )}
 
-        <div className="w-px h-4 bg-border/30" />
+        <div className="w-px h-4 bg-border/30 hidden sm:block" />
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="hidden sm:flex items-center gap-1 shrink-0">
           <input type="range" min="1" max="200" step="1" value={zoomLevel}
             onChange={e => handleZoom(Number(e.target.value))}
-            className="w-16 sm:w-20 h-1 accent-accent" disabled={wsDuration === 0}
+            className="w-20 h-1 accent-accent" disabled={wsDuration === 0}
           />
           <span className="text-[9px] text-text-muted font-mono w-5 text-right">{zoomLevel}x</span>
         </div>
       </div>
 
-      {/* === Toolbar === */}
-      <div className="flex items-center gap-0.5 px-2 py-0.5 border-b border-border/30 bg-bg-primary/60">
+      {/* === Toolbar (desktop only, merged into header on mobile) === */}
+      <div className="hidden sm:flex items-center gap-0.5 px-2 py-0.5 border-b border-border/30 bg-bg-primary/60">
         <TBtn icon={<IconScissors />} label="Dividir" shortcut="S"
           onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
@@ -719,8 +728,7 @@ export function SessionSongEditor() {
       </div>
 
       {/* === Waveform === */}
-      <div className="relative h-40 bg-bg-primary"
-        style={{ overflowX: 'auto', overflowY: 'hidden' }}
+      <div className="relative h-24 sm:h-40 bg-bg-primary overflow-x-auto overflow-y-hidden"
         onWheel={e => {
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
@@ -747,7 +755,7 @@ export function SessionSongEditor() {
         <div ref={waveContainerRef} className="w-full h-full" />
         {/* Legend for draggable handles */}
         {wsDuration > 0 && !isLoading && !loadError && (
-          <div className="absolute top-1 right-1 flex gap-2 text-[9px] pointer-events-none z-10">
+          <div className="absolute top-1 right-1 hidden sm:flex gap-2 text-[9px] pointer-events-none z-10">
             <span className="flex items-center gap-0.5 text-green-400 bg-black/40 px-1.5 py-0.5 rounded">
               <span className="w-1 h-2.5 bg-green-500 rounded-sm inline-block" />
               Inicio
@@ -795,8 +803,95 @@ export function SessionSongEditor() {
         </div>
       )}
 
-      {/* === Controls: compact row === */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/40 bg-bg-secondary/50 flex-wrap">
+      {/* === Controls: Mobile (collapsible) === */}
+      <div className="sm:hidden border-t border-border/40 bg-bg-secondary/50 overflow-hidden">
+        {/* Compact bar: summary + Save/Cancel + expand toggle */}
+        <div className="flex items-center gap-1 px-2 py-1 overflow-hidden">
+          <button onClick={() => setShowMobileControls(!showMobileControls)}
+            className="flex items-center shrink-0 text-[10px] text-text-muted min-h-[36px] px-0.5"
+          >
+            <svg className={`w-3 h-3 transition-transform ${showMobileControls ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <span className="text-[10px] font-mono text-text-muted truncate min-w-0 flex-1">
+            <span className="text-green-400">{fmt(startTime)}</span>
+            {'-'}
+            <span className="text-red-400">{fmt(endTime)}</span>
+            {' '}
+            <span className="text-amber-400">{transitionDuration}s</span>
+            {' '}
+            <span className="text-text-muted/60">{transitionType} {playbackSpeed !== 1 ? `${playbackSpeed}x` : ''}</span>
+          </span>
+          <div className="shrink-0 flex items-center gap-1">
+            <button onClick={handleCancel}
+              className="px-2 py-1 text-[11px] bg-bg-tertiary text-text-secondary rounded hover:bg-bg-hover transition-colors min-h-[36px]"
+            >Cancelar</button>
+            <button onClick={handleSave} disabled={saving}
+              className="px-2 py-1 text-[11px] bg-accent text-white rounded hover:bg-accent-hover transition-colors disabled:opacity-50 font-medium min-h-[36px]"
+            >{saving ? 'Guardando...' : 'Guardar'}</button>
+          </div>
+        </div>
+        {/* Expanded controls */}
+        {showMobileControls && (
+          <div className="px-2 pb-2 flex flex-col gap-2 border-t border-border/30 overflow-hidden">
+            {/* Start / End / Trans inputs */}
+            <div className="flex items-center gap-1.5 pt-1.5">
+              <label className="flex-1 flex items-center gap-0.5">
+                <span className="text-green-400 font-semibold text-[10px]">Ini</span>
+                <input type="number" min={0} max={endTime - 1} step={0.5}
+                  value={Math.round(startTime * 10) / 10}
+                  onChange={e => setStartTime(Math.max(0, Math.min(parseFloat(e.target.value) || 0, endTime - 1)))}
+                  className="w-full min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 py-1 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-green-500/60"
+                />
+              </label>
+              <label className="flex-1 flex items-center gap-0.5">
+                <span className="text-red-400 font-semibold text-[10px]">Fin</span>
+                <input type="number" min={startTime + 1} max={song.duration_seconds} step={0.5}
+                  value={Math.round(endTime * 10) / 10}
+                  onChange={e => setEndTime(Math.max(startTime + 1, Math.min(parseFloat(e.target.value) || 0, song.duration_seconds)))}
+                  className="w-full min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 py-1 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-red-500/60"
+                />
+              </label>
+              <label className="flex-1 flex items-center gap-0.5">
+                <span className="text-amber-400 font-semibold text-[10px]">Trans</span>
+                <input type="number" min={0} max={30} step={0.5}
+                  value={transitionDuration}
+                  onChange={e => setTransitionDuration(Math.max(0, Math.min(30, parseFloat(e.target.value) || 0)))}
+                  className="w-full min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 py-1 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-amber-500/60"
+                />
+              </label>
+            </div>
+            {/* Transition type buttons + speed */}
+            <div className="flex items-center gap-1">
+              {TRANSITION_TYPES.map(tt => (
+                <button key={tt.value} onClick={() => setTransitionType(tt.value)}
+                  className={`flex-1 min-h-[36px] rounded text-[10px] font-medium transition-colors ${
+                    transitionType === tt.value ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
+                  }`}
+                >{tt.label}</button>
+              ))}
+              <select value={playbackSpeed} onChange={e => setPlaybackSpeed(parseFloat(e.target.value))}
+                className="min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 text-[11px] text-text-primary font-mono focus:outline-none"
+              >
+                {SPEED_OPTIONS.map(s => <option key={s} value={s}>{s}x</option>)}
+              </select>
+            </div>
+            {/* Zoom slider */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-text-muted">Zoom</span>
+              <input type="range" min="1" max="200" step="1" value={zoomLevel}
+                onChange={e => handleZoom(Number(e.target.value))}
+                className="flex-1 h-1 accent-accent" disabled={wsDuration === 0}
+              />
+              <span className="text-[9px] text-text-muted font-mono w-6 text-right">{zoomLevel}x</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* === Controls: Desktop (full row) === */}
+      <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 border-t border-border/40 bg-bg-secondary/50 flex-wrap">
         {/* Start/End/Trans inputs */}
         <div className="flex items-center gap-2 text-[11px]">
           <label className="flex items-center gap-0.5">
