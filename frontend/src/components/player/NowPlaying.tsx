@@ -224,21 +224,30 @@ function WaveformDeck({
     });
     wsRef.current = ws;
 
-    // Always load via blob URL (peaks constructor causes media element errors)
+    // Always load via blob URL with retry
     let cancelled = false;
     (async () => {
-      try {
-        const response = await fetch(api.streamUrl(song.id));
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (cancelled) return;
-        const blob = await response.blob();
-        if (cancelled) return;
-        const blobUrl = URL.createObjectURL(blob);
-        ws.load(blobUrl);
-        ws.once('ready', () => URL.revokeObjectURL(blobUrl));
-        ws.once('error', () => URL.revokeObjectURL(blobUrl));
-      } catch (err) {
-        console.error('WaveSurfer blob load failed:', err);
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        try {
+          if (cancelled) return;
+          const response = await fetch(api.streamUrl(song.id));
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          if (cancelled) return;
+          const blob = await response.blob();
+          if (cancelled) return;
+          const blobUrl = URL.createObjectURL(blob);
+          ws.load(blobUrl);
+          ws.once('ready', () => URL.revokeObjectURL(blobUrl));
+          ws.once('error', () => URL.revokeObjectURL(blobUrl));
+          return;
+        } catch (err) {
+          if (cancelled) return;
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1500));
+          } else {
+            console.error('WaveSurfer blob load failed after retries:', err);
+          }
+        }
       }
     })();
 
