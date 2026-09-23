@@ -177,8 +177,10 @@ def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
 
 @router.post("/reanalyze")
 async def reanalyze_songs(db: Session = Depends(get_db)):
-    """Re-analyze all songs that have duration_seconds=0 using ffprobe."""
-    songs = db.query(Song).filter(Song.duration_seconds <= 0).all()
+    """Re-analyze songs: fix missing durations and generate waveform peaks."""
+    songs = db.query(Song).filter(
+        (Song.duration_seconds <= 0) | (Song.waveform_peaks == None) | (Song.waveform_peaks == "")
+    ).all()
     updated = 0
     for song in songs:
         file_path = Path(song.file_path)
@@ -188,8 +190,14 @@ async def reanalyze_songs(db: Session = Depends(get_db)):
             continue
         try:
             analysis = await asyncio.to_thread(analyze_audio_fast, str(file_path))
-            if analysis["duration_seconds"] > 0:
+            changed = False
+            if analysis["duration_seconds"] > 0 and song.duration_seconds <= 0:
                 song.duration_seconds = analysis["duration_seconds"]
+                changed = True
+            if analysis.get("waveform_peaks") and not song.waveform_peaks:
+                song.waveform_peaks = analysis["waveform_peaks"]
+                changed = True
+            if changed:
                 updated += 1
         except Exception as e:
             logger.warning(f"Failed to analyze song {song.id}: {e}")
