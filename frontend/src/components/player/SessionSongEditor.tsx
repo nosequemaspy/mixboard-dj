@@ -165,6 +165,8 @@ export function SessionSongEditor() {
   const [saving, setSaving] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [showMobileControls, setShowMobileControls] = useState(false);
+  const [muteStartMark, setMuteStartMark] = useState<number | null>(null);
+  const [cutStartMark, setCutStartMark] = useState<number | null>(null);
 
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -183,8 +185,9 @@ export function SessionSongEditor() {
   const endTimeRef = useRef(endTime);
   const transitionDurationRef = useRef(transitionDuration);
   const updatingFromRegion = useRef(false);
+  const muteStartMarkRef = useRef<number | null>(null);
+  const cutStartMarkRef = useRef<number | null>(null);
 
-  const selectedClip = clips.find(c => c.id === selectedClipId) ?? null;
   const mutedCount = clips.filter(c => c.status === 'mute').length;
   const cutCount = clips.filter(c => c.status === 'cut').length;
 
@@ -193,6 +196,8 @@ export function SessionSongEditor() {
   useEffect(() => { startTimeRef.current = startTime; }, [startTime]);
   useEffect(() => { endTimeRef.current = endTime; }, [endTime]);
   useEffect(() => { transitionDurationRef.current = transitionDuration; }, [transitionDuration]);
+  useEffect(() => { muteStartMarkRef.current = muteStartMark; }, [muteStartMark]);
+  useEffect(() => { cutStartMarkRef.current = cutStartMark; }, [cutStartMark]);
 
   // --- Sync stems_status from library store ---
   useEffect(() => {
@@ -275,21 +280,67 @@ export function SessionSongEditor() {
     setEndTime(Math.round(time * 10) / 10);
   }, [wsDuration, song?.duration_seconds]);
 
-  const toggleClipMute = useCallback(() => {
-    if (!selectedClipId || !canMuteVocals) return;
-    pushHistory();
-    setClips(prev => prev.map(c =>
-      c.id === selectedClipId ? { ...c, status: c.status === 'mute' ? 'keep' : 'mute' } : c
-    ));
-  }, [selectedClipId, canMuteVocals, pushHistory]);
+  /** Apply a status to a time range: split clips at boundaries, mark clips inside as the given status */
+  const applyStatusRange = useCallback((rangeStart: number, rangeEnd: number, status: 'mute' | 'cut') => {
+    const start = Math.min(rangeStart, rangeEnd);
+    const end = Math.max(rangeStart, rangeEnd);
+    if (end - start < SPLIT_MIN) return;
 
-  const toggleClipCut = useCallback(() => {
-    if (!selectedClipId) return;
     pushHistory();
-    setClips(prev => prev.map(c =>
-      c.id === selectedClipId ? { ...c, status: c.status === 'cut' ? 'keep' : 'cut' } : c
-    ));
-  }, [selectedClipId, pushHistory]);
+    let current = [...clipsRef.current];
+
+    // Split at start boundary if it falls inside a clip
+    const startIdx = current.findIndex(c => start > c.start + SPLIT_MIN && start < c.end - SPLIT_MIN);
+    if (startIdx !== -1) {
+      const clip = current[startIdx];
+      current.splice(startIdx, 1,
+        { id: genId(), start: clip.start, end: start, status: clip.status },
+        { id: genId(), start: start, end: clip.end, status: clip.status },
+      );
+    }
+
+    // Split at end boundary if it falls inside a clip
+    const endIdx = current.findIndex(c => end > c.start + SPLIT_MIN && end < c.end - SPLIT_MIN);
+    if (endIdx !== -1) {
+      const clip = current[endIdx];
+      current.splice(endIdx, 1,
+        { id: genId(), start: clip.start, end: end, status: clip.status },
+        { id: genId(), start: end, end: clip.end, status: clip.status },
+      );
+    }
+
+    // Toggle clips within [start, end] to the given status
+    current = current.map(c => {
+      if (c.start >= start - SPLIT_MIN && c.end <= end + SPLIT_MIN) {
+        return { ...c, status: c.status === status ? 'keep' : status };
+      }
+      return c;
+    });
+
+    setClips(current);
+    setSelectedClipId(null);
+  }, [pushHistory]);
+
+  const handleMuteAction = useCallback(() => {
+    if (!canMuteVocals) return;
+    const time = playerTimeRef.current;
+    if (muteStartMarkRef.current === null) {
+      setMuteStartMark(time);
+    } else {
+      applyStatusRange(muteStartMarkRef.current, time, 'mute');
+      setMuteStartMark(null);
+    }
+  }, [canMuteVocals, applyStatusRange]);
+
+  const handleCutAction = useCallback(() => {
+    const time = playerTimeRef.current;
+    if (cutStartMarkRef.current === null) {
+      setCutStartMark(time);
+    } else {
+      applyStatusRange(cutStartMarkRef.current, time, 'cut');
+      setCutStartMark(null);
+    }
+  }, [applyStatusRange]);
 
   const resetClipToKeep = useCallback(() => {
     if (!selectedClipId) return;
@@ -475,21 +526,23 @@ export function SessionSongEditor() {
         e.preventDefault(); splitAtPlayhead();
       } else if (e.code === 'KeyT' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault(); setTransitionAtPlayhead();
-      } else if (e.code === 'KeyM' && !e.ctrlKey && selectedClipId) {
-        e.preventDefault(); toggleClipMute();
-      } else if (e.code === 'KeyD' && !e.ctrlKey && selectedClipId) {
-        e.preventDefault(); toggleClipCut();
+      } else if (e.code === 'KeyM' && !e.ctrlKey) {
+        e.preventDefault(); handleMuteAction();
+      } else if (e.code === 'KeyD' && !e.ctrlKey) {
+        e.preventDefault(); handleCutAction();
       } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedClipId) {
         e.preventDefault(); resetClipToKeep();
       } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault(); undo();
       } else if (e.code === 'Escape') {
         setSelectedClipId(null);
+        setMuteStartMark(null);
+        setCutStartMark(null);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, setTransitionAtPlayhead, toggleClipMute, toggleClipCut, resetClipToKeep, undo, selectedClipId]);
+  }, [splitAtPlayhead, setTransitionAtPlayhead, handleMuteAction, handleCutAction, resetClipToKeep, undo, selectedClipId]);
 
   // --- Init clips on duration ready ---
 
@@ -552,6 +605,22 @@ export function SessionSongEditor() {
       if (i > 0) addOverlay(c.start, c.start, 'rgba(148,163,184,0.5)');
     });
 
+    // Pending mute/cut start markers
+    if (muteStartMark !== null) {
+      const mr = rp.addRegion({ start: muteStartMark, end: muteStartMark, color: 'rgba(168,85,247,0.9)', drag: false, resize: false });
+      try {
+        const el = (mr as any).element;
+        if (el) { el.style.borderLeft = '3px dashed rgb(168,85,247)'; el.style.zIndex = '4'; el.style.pointerEvents = 'none'; }
+      } catch {}
+    }
+    if (cutStartMark !== null) {
+      const cr = rp.addRegion({ start: cutStartMark, end: cutStartMark, color: 'rgba(239,68,68,0.9)', drag: false, resize: false });
+      try {
+        const el = (cr as any).element;
+        if (el) { el.style.borderLeft = '3px dashed rgb(239,68,68)'; el.style.zIndex = '4'; el.style.pointerEvents = 'none'; }
+      } catch {}
+    }
+
     // === DRAGGABLE START HANDLE (green) ===
     const startR = rp.addRegion({
       id: 'start-handle',
@@ -591,7 +660,7 @@ export function SessionSongEditor() {
     } catch {}
 
     updatingFromRegion.current = false;
-  }, [wsDuration, song?.duration_seconds]);
+  }, [wsDuration, song?.duration_seconds, muteStartMark, cutStartMark]);
 
   // --- Region event listeners for draggable handles ---
 
@@ -628,7 +697,7 @@ export function SessionSongEditor() {
 
   useEffect(() => {
     drawRegions();
-  }, [startTime, endTime, transitionDuration, clips, drawRegions]);
+  }, [startTime, endTime, transitionDuration, clips, muteStartMark, cutStartMark, drawRegions]);
 
   // --- Handlers ---
 
@@ -706,6 +775,8 @@ export function SessionSongEditor() {
     if (dur > 0) initClipsFromSections(dur, existingMuteSections, existingCutSections);
     setSelectedClipId(null);
     setClipHistory([]);
+    setMuteStartMark(null);
+    setCutStartMark(null);
   };
 
   const displayDuration = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? playerDuration);
@@ -752,10 +823,10 @@ export function SessionSongEditor() {
         <div className="flex items-center shrink-0 sm:hidden">
           <TBtn icon={<IconScissors />} label="Dividir" onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
           <TBtn icon={<IconTransition />} label="Trans" onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
-          <TBtn icon={<IconMicOff />} label="Mute" onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
-            active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
-          <TBtn icon={<IconTrash />} label="Eliminar" onClick={toggleClipCut} disabled={!selectedClipId}
-            active={selectedClip?.status === 'cut'} activeClass="bg-danger/20 text-danger" />
+          <TBtn icon={<IconMicOff />} label={muteStartMark !== null ? 'Mute▸' : 'Mute'} onClick={handleMuteAction} disabled={!canMuteVocals}
+            active={muteStartMark !== null} activeClass="bg-purple-500/20 text-purple-400" />
+          <TBtn icon={<IconTrash />} label={cutStartMark !== null ? 'Del▸' : 'Eliminar'} onClick={handleCutAction}
+            active={cutStartMark !== null} activeClass="bg-danger/20 text-danger" />
           <TBtn icon={<IconUndo />} label="Deshacer" onClick={undo} disabled={clipHistory.length === 0} />
         </div>
 
@@ -787,12 +858,12 @@ export function SessionSongEditor() {
         <TBtn icon={<IconTransition />} label="Trans" shortcut="T"
           onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
-        <TBtn icon={<IconMicOff />} label="Mute" shortcut="M"
-          onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
-          active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
-        <TBtn icon={<IconTrash />} label="Eliminar" shortcut="D"
-          onClick={toggleClipCut} disabled={!selectedClipId}
-          active={selectedClip?.status === 'cut'} activeClass="bg-danger/20 text-danger" />
+        <TBtn icon={<IconMicOff />} label={muteStartMark !== null ? 'Mute ▸' : 'Mute'} shortcut="M"
+          onClick={handleMuteAction} disabled={!canMuteVocals}
+          active={muteStartMark !== null} activeClass="bg-purple-500/20 text-purple-400" />
+        <TBtn icon={<IconTrash />} label={cutStartMark !== null ? 'Eliminar ▸' : 'Eliminar'} shortcut="D"
+          onClick={handleCutAction}
+          active={cutStartMark !== null} activeClass="bg-danger/20 text-danger" />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
         <TBtn icon={<IconUndo />} label="Deshacer" shortcut="Ctrl+Z"
           onClick={undo} disabled={clipHistory.length === 0} />
