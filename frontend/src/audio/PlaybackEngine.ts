@@ -547,6 +547,15 @@ export class PlaybackEngine {
     this.preloadedDuration = 0;
   }
 
+  /** Refresh the playback config for the currently playing item (after save) */
+  refreshCurrentConfig(updatedItem: SessionItem) {
+    if (this.currentItem && this.currentItem.id === updatedItem.id) {
+      this.currentItem = updatedItem;
+      this.currentConfig = getPlaybackConfig(updatedItem);
+      this.applyDeckConfig(this.activeDeck, updatedItem);
+    }
+  }
+
   private cancelTransition() {
     this.isTransitioning = false;
     if (this.crossfadeAnimId) {

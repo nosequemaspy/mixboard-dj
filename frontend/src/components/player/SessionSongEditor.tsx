@@ -803,6 +803,13 @@ export function SessionSongEditor() {
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
 
+      // Update PlaybackEngine config for the current item (so cuts/mutes take effect immediately)
+      const updatedItems = usePlayerStore.getState().sessionItems;
+      const updatedItem = updatedItems.find(i => i.id === currentItem.id);
+      if (updatedItem) {
+        getPlaybackEngine().refreshCurrentConfig(updatedItem);
+      }
+
       // Reload editor: force WaveSurfer + clips re-init from saved data
       setMuteStartMark(null);
       setCutStartMark(null);
