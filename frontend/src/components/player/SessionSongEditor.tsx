@@ -802,6 +802,13 @@ export function SessionSongEditor() {
       await useLibraryStore.getState().fetchSongs();
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
+
+      // Reload editor: force WaveSurfer + clips re-init from saved data
+      setMuteStartMark(null);
+      setCutStartMark(null);
+      setSelectedClipId(null);
+      setClipHistory([]);
+      setRetryKey(k => k + 1);
     } catch (err: any) {
       console.error('Failed to save:', err);
       alert(err.message || 'Error al guardar');
