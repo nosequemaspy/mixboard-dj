@@ -332,11 +332,29 @@ export function SessionSongEditor() {
     setSelectedClipId(null);
   }, [pushHistory]);
 
+  const toggleClipMute = useCallback(() => {
+    if (!selectedClipId) return;
+    if (!canMuteVocals) {
+      setShowStemPrompt(true);
+      return;
+    }
+    pushHistory();
+    setClips(prev => prev.map(c =>
+      c.id === selectedClipId ? { ...c, status: c.status === 'mute' ? 'keep' : 'mute' } : c
+    ));
+  }, [selectedClipId, canMuteVocals, pushHistory]);
+
   const handleMuteAction = useCallback(() => {
     if (!canMuteVocals) {
       setShowStemPrompt(true);
       return;
     }
+    // If a clip is selected, toggle its mute status directly
+    if (selectedClipId) {
+      toggleClipMute();
+      return;
+    }
+    // Otherwise, use range-based approach (M twice to mark start/end)
     const time = playerTimeRef.current;
     if (muteStartMarkRef.current === null) {
       setMuteStartMark(time);
@@ -344,7 +362,7 @@ export function SessionSongEditor() {
       applyStatusRange(muteStartMarkRef.current, time, 'mute');
       setMuteStartMark(null);
     }
-  }, [canMuteVocals, applyStatusRange]);
+  }, [canMuteVocals, selectedClipId, toggleClipMute, applyStatusRange]);
 
   const toggleClipCut = useCallback(() => {
     if (!selectedClipId) return;

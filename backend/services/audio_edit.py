@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -54,8 +55,8 @@ def _replace_original(song: Song, tmp_output: str, db: Session):
     original_path = get_absolute_path(song.file_path)
     new_duration = get_duration_ffprobe(Path(tmp_output))
 
-    # Replace original file
-    os.replace(tmp_output, str(original_path))
+    # Replace original file (shutil.move handles cross-device moves)
+    shutil.move(tmp_output, str(original_path))
 
     # Update song record
     song.duration_seconds = new_duration
