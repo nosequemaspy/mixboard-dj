@@ -182,6 +182,7 @@ export interface SessionItem {
   transition_type: string | null;
   playback_speed: number | null;
   mute_sections: string | null;
+  cut_sections: string | null;
   song: Song;
 }
 
@@ -222,6 +223,12 @@ export function matchesSearch(query: string, title: string, artist: string): boo
 export function getEffectiveMuteSections(item: SessionItem): MuteSection[] {
   if (!item.mute_sections) return [];
   try { return JSON.parse(item.mute_sections); } catch { return []; }
+}
+
+/** Parse cut_sections JSON from a session item into typed array */
+export function getEffectiveCutSections(item: SessionItem): MuteSection[] {
+  if (!item.cut_sections) return [];
+  try { return JSON.parse(item.cut_sections); } catch { return []; }
 }
 
 export interface Suggestion {

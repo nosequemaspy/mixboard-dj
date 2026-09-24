@@ -6,17 +6,17 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
-import { getEffectivePlaybackSettings } from '../../types';
+import { getEffectivePlaybackSettings, getEffectiveCutSections } from '../../types';
 import type { MuteSection } from '../../types';
 import { api } from '../../api/http';
 
-// --- Clip types (session: keep | mute only) ---
+// --- Clip types (session: keep | mute | cut) ---
 
 interface Clip {
   id: string;
   start: number;
   end: number;
-  status: 'keep' | 'mute';
+  status: 'keep' | 'mute' | 'cut';
 }
 
 let _cid = 0;
@@ -96,6 +96,12 @@ const IconUndo = () => (
   </svg>
 );
 
+const IconTrash = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+  </svg>
+);
+
 const IconReset = () => (
   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path d="M1 4v6h6" /><path d="M23 20v-6h-6" />
@@ -122,12 +128,18 @@ export function SessionSongEditor() {
     ? folders.find(f => f.id === currentItem.folder_id)
     : null;
 
-  // Memoize mute sections to avoid new-array-every-render
+  // Memoize mute/cut sections to avoid new-array-every-render
   const existingMuteSectionsJson = currentItem?.mute_sections ?? '';
   const existingMuteSections = useMemo<MuteSection[]>(() => {
     if (!existingMuteSectionsJson) return [];
     try { return JSON.parse(existingMuteSectionsJson); } catch { return []; }
   }, [existingMuteSectionsJson]);
+
+  const existingCutSectionsJson = currentItem?.cut_sections ?? '';
+  const existingCutSections = useMemo<MuteSection[]>(() => {
+    if (!existingCutSectionsJson) return [];
+    try { return JSON.parse(existingCutSectionsJson); } catch { return []; }
+  }, [existingCutSectionsJson]);
 
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(0);
@@ -167,6 +179,7 @@ export function SessionSongEditor() {
 
   const selectedClip = clips.find(c => c.id === selectedClipId) ?? null;
   const mutedCount = clips.filter(c => c.status === 'mute').length;
+  const cutCount = clips.filter(c => c.status === 'cut').length;
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { playerTimeRef.current = playerCurrentTime; }, [playerCurrentTime]);
@@ -199,20 +212,24 @@ export function SessionSongEditor() {
       currentItem?.transition_duration, currentItem?.transition_type,
       currentItem?.playback_speed, song?.duration_seconds]);
 
-  // --- Init clips from mute sections ---
-  const initClipsFromMuteSections = useCallback((dur: number, ms: MuteSection[]) => {
+  // --- Init clips from mute + cut sections ---
+  const initClipsFromSections = useCallback((dur: number, ms: MuteSection[], cs: MuteSection[]) => {
     if (dur <= 0) return;
-    if (ms.length === 0) {
+    if (ms.length === 0 && cs.length === 0) {
       setClips([{ id: genId(), start: 0, end: dur, status: 'keep' }]);
       return;
     }
-    const sorted = [...ms].sort((a, b) => a.start - b.start);
+    // Merge mute and cut sections with their status, sorted by start
+    const tagged: { start: number; end: number; status: 'mute' | 'cut' }[] = [
+      ...ms.map(s => ({ ...s, status: 'mute' as const })),
+      ...cs.map(s => ({ ...s, status: 'cut' as const })),
+    ].sort((a, b) => a.start - b.start);
     const newClips: Clip[] = [];
     let pos = 0;
-    for (const section of sorted) {
+    for (const section of tagged) {
       if (section.start > pos)
         newClips.push({ id: genId(), start: pos, end: section.start, status: 'keep' });
-      newClips.push({ id: genId(), start: section.start, end: section.end, status: 'mute' });
+      newClips.push({ id: genId(), start: section.start, end: section.end, status: section.status });
       pos = section.end;
     }
     if (pos < dur) newClips.push({ id: genId(), start: pos, end: dur, status: 'keep' });
@@ -251,6 +268,14 @@ export function SessionSongEditor() {
       c.id === selectedClipId ? { ...c, status: c.status === 'mute' ? 'keep' : 'mute' } : c
     ));
   }, [selectedClipId, canMuteVocals, pushHistory]);
+
+  const toggleClipCut = useCallback(() => {
+    if (!selectedClipId) return;
+    pushHistory();
+    setClips(prev => prev.map(c =>
+      c.id === selectedClipId ? { ...c, status: c.status === 'cut' ? 'keep' : 'cut' } : c
+    ));
+  }, [selectedClipId, pushHistory]);
 
   const resetClipToKeep = useCallback(() => {
     if (!selectedClipId) return;
@@ -436,6 +461,8 @@ export function SessionSongEditor() {
         e.preventDefault(); splitAtPlayhead();
       } else if (e.code === 'KeyM' && !e.ctrlKey && selectedClipId) {
         e.preventDefault(); toggleClipMute();
+      } else if (e.code === 'KeyD' && !e.ctrlKey && selectedClipId) {
+        e.preventDefault(); toggleClipCut();
       } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedClipId) {
         e.preventDefault(); resetClipToKeep();
       } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
@@ -446,15 +473,15 @@ export function SessionSongEditor() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, toggleClipMute, resetClipToKeep, undo, selectedClipId]);
+  }, [splitAtPlayhead, toggleClipMute, toggleClipCut, resetClipToKeep, undo, selectedClipId]);
 
   // --- Init clips on duration ready ---
 
   useEffect(() => {
     if (wsDuration > 0 && clips.length === 0) {
-      initClipsFromMuteSections(wsDuration, existingMuteSections);
+      initClipsFromSections(wsDuration, existingMuteSections, existingCutSections);
     }
-  }, [wsDuration, clips.length, existingMuteSections, initClipsFromMuteSections]);
+  }, [wsDuration, clips.length, existingMuteSections, existingCutSections, initClipsFromSections]);
 
   // --- Sync cursor from PlaybackEngine ---
 
@@ -499,6 +526,11 @@ export function SessionSongEditor() {
       if (c.status === 'mute') addOverlay(c.start, c.end, 'rgba(168,85,247,0.25)');
     });
 
+    // Cut overlays (red)
+    clipsRef.current.forEach(c => {
+      if (c.status === 'cut') addOverlay(c.start, c.end, 'rgba(239,68,68,0.25)');
+    });
+
     // Split lines
     clipsRef.current.forEach((c, i) => {
       if (i > 0) addOverlay(c.start, c.start, 'rgba(148,163,184,0.5)');
@@ -523,12 +555,12 @@ export function SessionSongEditor() {
       }
     } catch {}
 
-    // === DRAGGABLE END HANDLE (red) ===
+    // === DRAGGABLE END HANDLE (orange — transition marker) ===
     const endR = rp.addRegion({
       id: 'end-handle',
       start: et,
       end: et,
-      color: 'rgba(239,68,68,0.9)',
+      color: 'rgba(249,115,22,0.9)',
       drag: true,
       resize: false,
     });
@@ -536,8 +568,8 @@ export function SessionSongEditor() {
       const el = (endR as any).element;
       if (el) {
         el.style.cursor = 'col-resize';
-        el.style.borderLeft = '4px solid rgb(239,68,68)';
-        el.style.boxShadow = '0 0 8px rgba(239,68,68,0.5)';
+        el.style.borderLeft = '4px solid rgb(249,115,22)';
+        el.style.boxShadow = '0 0 8px rgba(249,115,22,0.5)';
         el.style.zIndex = '5';
       }
     } catch {}
@@ -622,6 +654,10 @@ export function SessionSongEditor() {
         .filter(c => c.status === 'mute')
         .map(c => ({ start: c.start, end: c.end }));
 
+      const cutSectionsData: MuteSection[] = clips
+        .filter(c => c.status === 'cut')
+        .map(c => ({ start: c.start, end: c.end }));
+
       await api.updateSessionItem(sessionId, currentItem.id, {
         start_time: startTime > 0.5 ? startTime : 0.0,
         end_time: endTime >= song.duration_seconds - 0.5 ? 0.0 : endTime,
@@ -629,6 +665,7 @@ export function SessionSongEditor() {
         transition_type: transitionType,
         playback_speed: playbackSpeed,
         mute_sections: muteSectionsData.length > 0 ? JSON.stringify(muteSectionsData) : '',
+        cut_sections: cutSectionsData.length > 0 ? JSON.stringify(cutSectionsData) : '',
       }, password);
 
       await useSessionStore.getState().fetchActiveSession(sessionId);
@@ -650,7 +687,7 @@ export function SessionSongEditor() {
     setTransitionType(e.transition_type);
     setPlaybackSpeed(e.playback_speed);
     const dur = wsDuration > 0 ? wsDuration : song.duration_seconds;
-    if (dur > 0) initClipsFromMuteSections(dur, existingMuteSections);
+    if (dur > 0) initClipsFromSections(dur, existingMuteSections, existingCutSections);
     setSelectedClipId(null);
     setClipHistory([]);
   };
@@ -700,6 +737,8 @@ export function SessionSongEditor() {
           <TBtn icon={<IconScissors />} label="Dividir" onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
           <TBtn icon={<IconMicOff />} label="Mute" onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
             active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
+          <TBtn icon={<IconTrash />} label="Eliminar" onClick={toggleClipCut} disabled={!selectedClipId}
+            active={selectedClip?.status === 'cut'} activeClass="bg-danger/20 text-danger" />
           <TBtn icon={<IconUndo />} label="Deshacer" onClick={undo} disabled={clipHistory.length === 0} />
         </div>
 
@@ -732,13 +771,19 @@ export function SessionSongEditor() {
         <TBtn icon={<IconMicOff />} label="Mute" shortcut="M"
           onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
           active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
+        <TBtn icon={<IconTrash />} label="Eliminar" shortcut="D"
+          onClick={toggleClipCut} disabled={!selectedClipId}
+          active={selectedClip?.status === 'cut'} activeClass="bg-danger/20 text-danger" />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
         <TBtn icon={<IconUndo />} label="Deshacer" shortcut="Ctrl+Z"
           onClick={undo} disabled={clipHistory.length === 0} />
         <TBtn icon={<IconReset />} label="Limpiar"
-          onClick={resetClips} disabled={clips.length <= 1 && mutedCount === 0} />
-        {mutedCount > 0 && (
-          <span className="ml-auto text-[10px] text-warning font-mono">{mutedCount} mute{mutedCount > 1 ? 's' : ''}</span>
+          onClick={resetClips} disabled={clips.length <= 1 && mutedCount === 0 && cutCount === 0} />
+        {(mutedCount > 0 || cutCount > 0) && (
+          <span className="ml-auto text-[10px] font-mono flex gap-2">
+            {mutedCount > 0 && <span className="text-warning">{mutedCount} mute{mutedCount > 1 ? 's' : ''}</span>}
+            {cutCount > 0 && <span className="text-danger">{cutCount} cut{cutCount > 1 ? 's' : ''}</span>}
+          </span>
         )}
       </div>
 
@@ -775,13 +820,13 @@ export function SessionSongEditor() {
               <span className="w-1 h-2.5 bg-green-500 rounded-sm inline-block" />
               Inicio
             </span>
-            <span className="flex items-center gap-0.5 text-red-400 bg-black/40 px-1.5 py-0.5 rounded">
-              <span className="w-1 h-2.5 bg-red-500 rounded-sm inline-block" />
-              Final
+            <span className="flex items-center gap-0.5 text-orange-400 bg-black/40 px-1.5 py-0.5 rounded">
+              <span className="w-1 h-2.5 bg-orange-500 rounded-sm inline-block" />
+              Trans
             </span>
             <span className="flex items-center gap-0.5 text-amber-400 bg-black/40 px-1.5 py-0.5 rounded">
               <span className="w-2 h-2.5 bg-amber-500/40 rounded-sm inline-block" />
-              Trans
+              Zona
             </span>
           </div>
         )}
@@ -799,7 +844,9 @@ export function SessionSongEditor() {
                 onClick={() => { setSelectedClipId(clip.id); seekToTime(clip.start + 0.01); }}
                 style={{ width: `${pct}%`, minWidth: '3px' }}
                 className={`h-full border-l flex items-center cursor-pointer transition-all overflow-hidden select-none
-                  ${clip.status === 'mute'
+                  ${clip.status === 'cut'
+                    ? 'border-l-danger/60 bg-danger/10 text-danger/60'
+                    : clip.status === 'mute'
                     ? 'border-l-warning/60 bg-warning/10 text-warning/60'
                     : 'border-l-accent/20 bg-accent/5 text-text-muted/40'}
                   ${isSelected ? 'ring-1 ring-inset ring-accent/60 brightness-150' : 'hover:brightness-125'}
@@ -807,7 +854,7 @@ export function SessionSongEditor() {
               >
                 {!isNarrow && (
                   <span className="text-[8px] font-mono truncate px-1">
-                    {clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
+                    {clip.status === 'cut' ? '✕ ' : clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
                   </span>
                 )}
               </div>
@@ -832,7 +879,7 @@ export function SessionSongEditor() {
           <span className="text-[10px] font-mono text-text-muted truncate min-w-0 flex-1">
             <span className="text-green-400">{fmt(startTime)}</span>
             {'-'}
-            <span className="text-red-400">{fmt(endTime)}</span>
+            <span className="text-orange-400">{fmt(endTime)}</span>
             {' '}
             <span className="text-amber-400">{transitionDuration}s</span>
             {' '}
@@ -850,7 +897,7 @@ export function SessionSongEditor() {
         {/* Expanded controls */}
         {showMobileControls && (
           <div className="px-2 pb-2 flex flex-col gap-2 border-t border-border/30 overflow-hidden">
-            {/* Start / End / Trans inputs */}
+            {/* Start / Trans inputs */}
             <div className="flex items-center gap-1.5 pt-1.5">
               <label className="flex-1 flex items-center gap-0.5">
                 <span className="text-green-400 font-semibold text-[10px]">Ini</span>
@@ -858,14 +905,6 @@ export function SessionSongEditor() {
                   value={Math.round(startTime * 10) / 10}
                   onChange={e => setStartTime(Math.max(0, Math.min(parseFloat(e.target.value) || 0, endTime - 1)))}
                   className="w-full min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 py-1 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-green-500/60"
-                />
-              </label>
-              <label className="flex-1 flex items-center gap-0.5">
-                <span className="text-red-400 font-semibold text-[10px]">Fin</span>
-                <input type="number" min={startTime + 1} max={song.duration_seconds} step={0.5}
-                  value={Math.round(endTime * 10) / 10}
-                  onChange={e => setEndTime(Math.max(startTime + 1, Math.min(parseFloat(e.target.value) || 0, song.duration_seconds)))}
-                  className="w-full min-h-[36px] bg-bg-primary border border-border/50 rounded px-1 py-1 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-red-500/60"
                 />
               </label>
               <label className="flex-1 flex items-center gap-0.5">
@@ -915,14 +954,6 @@ export function SessionSongEditor() {
               value={Math.round(startTime * 10) / 10}
               onChange={e => setStartTime(Math.max(0, Math.min(parseFloat(e.target.value) || 0, endTime - 1)))}
               className="w-14 bg-bg-primary border border-border/50 rounded px-1 py-0.5 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-green-500/60"
-            />
-          </label>
-          <label className="flex items-center gap-0.5">
-            <span className="text-red-400 font-semibold text-[10px]">Final</span>
-            <input type="number" min={startTime + 1} max={song.duration_seconds} step={0.5}
-              value={Math.round(endTime * 10) / 10}
-              onChange={e => setEndTime(Math.max(startTime + 1, Math.min(parseFloat(e.target.value) || 0, song.duration_seconds)))}
-              className="w-14 bg-bg-primary border border-border/50 rounded px-1 py-0.5 text-[11px] text-text-primary font-mono text-center focus:outline-none focus:border-red-500/60"
             />
           </label>
           <label className="flex items-center gap-0.5">

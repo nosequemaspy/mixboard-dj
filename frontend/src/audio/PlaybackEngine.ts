@@ -1,6 +1,7 @@
 import type { DeckId } from '../types';
 import type { SessionItem } from '../types';
-import { getEffectivePlaybackSettings, getEffectiveMuteSections } from '../types';
+import { getEffectivePlaybackSettings, getEffectiveMuteSections, getEffectiveCutSections } from '../types';
+import type { MuteSection } from '../types';
 import { AudioEngine } from './AudioEngine';
 type TransitionType = 'smooth' | 'sharp' | 'linear' | 'cut';
 
@@ -11,6 +12,7 @@ interface SongPlaybackConfig {
   transitionDuration: number;
   transitionType: TransitionType;
   playbackSpeed: number;
+  cutSections: MuteSection[];
 }
 
 function getPlaybackConfig(item: SessionItem): SongPlaybackConfig {
@@ -21,6 +23,7 @@ function getPlaybackConfig(item: SessionItem): SongPlaybackConfig {
     transitionDuration: eff.transition_duration,
     transitionType: eff.transition_type as TransitionType,
     playbackSpeed: eff.playback_speed,
+    cutSections: getEffectiveCutSections(item),
   };
 }
 
@@ -100,6 +103,16 @@ export class PlaybackEngine {
         this.onTimeUpdate?.(time);
 
         const config = this.currentConfig!;
+
+        // Auto-seek past cut sections
+        if (config.cutSections.length > 0) {
+          const cutSection = config.cutSections.find(s => time >= s.start && time < s.end);
+          if (cutSection) {
+            this.engine.seek(this.activeDeck, cutSection.end);
+            return;
+          }
+        }
+
         const effectiveEnd = config.endTime ?? this.currentDuration;
         const transitionPoint = effectiveEnd - config.transitionDuration;
 

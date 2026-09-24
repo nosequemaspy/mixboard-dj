@@ -368,6 +368,8 @@ def update_item(
         item.playback_speed = data.playback_speed
     if data.mute_sections is not None:
         item.mute_sections = data.mute_sections if data.mute_sections else None
+    if data.cut_sections is not None:
+        item.cut_sections = data.cut_sections if data.cut_sections else None
     db.commit()
     db.refresh(item)
 
