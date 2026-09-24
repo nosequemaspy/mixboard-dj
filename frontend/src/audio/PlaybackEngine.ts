@@ -340,9 +340,13 @@ export class PlaybackEngine {
           easedProgress = progress;
           break;
         case 'smooth':
-        default:
-          easedProgress = Math.sin(progress * Math.PI / 2);
+        default: {
+          // S-curve with middle plateau: derivative=0 at midpoint so both
+          // songs stay at similar volume for a noticeable period before completing
+          const x = 2 * progress - 1;
+          easedProgress = 0.5 + 0.5 * x * Math.abs(x);
           break;
+        }
       }
 
       this.engine.setTransitionGain(this.activeDeck, 1 - easedProgress);
@@ -423,9 +427,11 @@ export class PlaybackEngine {
           eased = progress;
           break;
         case 'smooth':
-        default:
-          eased = Math.sin(progress * Math.PI / 2);
+        default: {
+          const x = 2 * progress - 1;
+          eased = 0.5 + 0.5 * x * Math.abs(x);
           break;
+        }
       }
 
       this.engine.setTransitionGain(this.activeDeck, 1 - eased);
