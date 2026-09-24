@@ -764,22 +764,64 @@ export function SessionSongEditor() {
         .filter(c => c.status === 'cut')
         .map(c => ({ start: c.start, end: c.end }));
 
-      // Save cut sections to the Song (permanent, shared across sessions)
-      await api.updateSong(song.id, {
-        cut_sections: cutSectionsData.length > 0 ? JSON.stringify(cutSectionsData) : '',
-      });
+      // If there are cut sections, physically remove them from the audio file
+      if (cutSectionsData.length > 0) {
+        await api.createEdit({
+          song_id: song.id,
+          name: song.title,
+          edit_type: 'cut_section',
+          params: { sections: cutSectionsData },
+        });
 
-      // Save per-session settings (transitions, mute, speed) to session item
-      await api.updateSessionItem(sessionId, currentItem.id, {
-        start_time: startTime > 0.5 ? startTime : 0.0,
-        end_time: endTime >= song.duration_seconds - 0.5 ? 0.0 : endTime,
-        transition_duration: transitionDuration,
-        transition_type: transitionType,
-        playback_speed: playbackSpeed,
-        mute_sections: muteSectionsData.length > 0 ? JSON.stringify(muteSectionsData) : '',
-      }, password);
+        // Adjust start_time and end_time to account for removed sections
+        // Calculate how much time was removed before each point
+        const sortedCuts = [...cutSectionsData].sort((a, b) => a.start - b.start);
+        const adjustTime = (t: number) => {
+          let removed = 0;
+          for (const cut of sortedCuts) {
+            if (cut.end <= t) {
+              removed += cut.end - cut.start;
+            } else if (cut.start < t) {
+              removed += t - cut.start;
+            }
+          }
+          return Math.max(0, t - removed);
+        };
 
-      // Refresh both library (for song.cut_sections) and session stores
+        const adjustedStart = adjustTime(startTime);
+        const adjustedEnd = endTime >= song.duration_seconds - 0.5 ? 0.0 : adjustTime(endTime);
+
+        // Adjust mute sections too
+        const adjustedMuteSections: MuteSection[] = muteSectionsData.map(m => ({
+          start: adjustTime(m.start),
+          end: adjustTime(m.end),
+        })).filter(m => m.end - m.start > 0.05);
+
+        // Clear cut_sections from song (already physically removed)
+        await api.updateSong(song.id, { cut_sections: '' });
+
+        // Save adjusted per-session settings
+        await api.updateSessionItem(sessionId, currentItem.id, {
+          start_time: adjustedStart > 0.5 ? adjustedStart : 0.0,
+          end_time: adjustedEnd,
+          transition_duration: transitionDuration,
+          transition_type: transitionType,
+          playback_speed: playbackSpeed,
+          mute_sections: adjustedMuteSections.length > 0 ? JSON.stringify(adjustedMuteSections) : '',
+        }, password);
+      } else {
+        // No cuts — just save per-session settings
+        await api.updateSessionItem(sessionId, currentItem.id, {
+          start_time: startTime > 0.5 ? startTime : 0.0,
+          end_time: endTime >= song.duration_seconds - 0.5 ? 0.0 : endTime,
+          transition_duration: transitionDuration,
+          transition_type: transitionType,
+          playback_speed: playbackSpeed,
+          mute_sections: muteSectionsData.length > 0 ? JSON.stringify(muteSectionsData) : '',
+        }, password);
+      }
+
+      // Refresh library (song duration changed) and session stores
       await useLibraryStore.getState().fetchSongs();
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
