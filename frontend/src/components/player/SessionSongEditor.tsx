@@ -346,16 +346,6 @@ export function SessionSongEditor() {
     }
   }, [canMuteVocals, applyStatusRange]);
 
-  const handleCutAction = useCallback(() => {
-    const time = playerTimeRef.current;
-    if (cutStartMarkRef.current === null) {
-      setCutStartMark(time);
-    } else {
-      applyStatusRange(cutStartMarkRef.current, time, 'cut');
-      setCutStartMark(null);
-    }
-  }, [applyStatusRange]);
-
   const toggleClipCut = useCallback(() => {
     if (!selectedClipId) return;
     pushHistory();
@@ -363,6 +353,22 @@ export function SessionSongEditor() {
       c.id === selectedClipId ? { ...c, status: c.status === 'cut' ? 'keep' : 'cut' } : c
     ));
   }, [selectedClipId, pushHistory]);
+
+  const handleCutAction = useCallback(() => {
+    // If a clip is selected, toggle its cut status directly
+    if (selectedClipId) {
+      toggleClipCut();
+      return;
+    }
+    // Otherwise, use range-based approach (D twice to mark start/end)
+    const time = playerTimeRef.current;
+    if (cutStartMarkRef.current === null) {
+      setCutStartMark(time);
+    } else {
+      applyStatusRange(cutStartMarkRef.current, time, 'cut');
+      setCutStartMark(null);
+    }
+  }, [selectedClipId, toggleClipCut, applyStatusRange]);
 
   const undo = useCallback(() => {
     if (clipHistory.length === 0) return;
