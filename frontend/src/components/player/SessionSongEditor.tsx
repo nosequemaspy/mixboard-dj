@@ -6,7 +6,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
-import { getEffectivePlaybackSettings, getEffectiveCutSections } from '../../types';
+import { getEffectivePlaybackSettings } from '../../types';
 import type { MuteSection } from '../../types';
 import { api } from '../../api/http';
 

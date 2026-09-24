@@ -535,7 +535,7 @@ export class PlaybackEngine {
     if (this.preloadedItem) {
       return getPlaybackConfig(this.preloadedItem);
     }
-    return { startTime: 0, endTime: null, transitionDuration: 4, transitionType: 'smooth', playbackSpeed: 1 };
+    return { startTime: 0, endTime: null, transitionDuration: 4, transitionType: 'smooth', playbackSpeed: 1, cutSections: [] };
   }
 
   private swapDecks() {
