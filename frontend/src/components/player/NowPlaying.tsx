@@ -239,10 +239,25 @@ function WaveformDeck({
     const ws = WaveSurfer.create(wsOptions);
     wsRef.current = ws;
 
-    // Only fetch blob if no peaks available
+    // If no inline peaks, fetch from API then fall back to audio blob
     let cancelled = false;
     if (!usedPeaks) {
       (async () => {
+        // Try lightweight peaks from single-song API
+        try {
+          if (cancelled) return;
+          const fullSong = await api.getSong(song.id);
+          if (cancelled) return;
+          if (fullSong.waveform_peaks) {
+            const peaks: number[] = JSON.parse(fullSong.waveform_peaks);
+            if (peaks.length > 0) {
+              ws.load('', [peaks], song.duration_seconds);
+              return;
+            }
+          }
+        } catch { /* fall through to blob */ }
+
+        // Fallback: fetch audio blob with retry
         for (let attempt = 0; attempt <= 2; attempt++) {
           try {
             if (cancelled) return;

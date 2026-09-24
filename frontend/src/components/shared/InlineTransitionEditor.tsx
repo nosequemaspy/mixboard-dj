@@ -94,10 +94,25 @@ export function InlineTransitionEditor({ item, nextItem, onClose, onSaved }: Inl
     const ws = WaveSurfer.create(wsOptions);
     wsRef.current = ws;
 
-    // Only fetch blob if no peaks available
+    // If no inline peaks, fetch from API then fall back to audio blob
     let cancelled = false;
     if (!usedPeaks) {
       (async () => {
+        // Try lightweight peaks from single-song API
+        try {
+          if (cancelled) return;
+          const fullSong = await api.getSong(song.id);
+          if (cancelled) return;
+          if (fullSong.waveform_peaks) {
+            const peaks: number[] = JSON.parse(fullSong.waveform_peaks);
+            if (peaks.length > 0) {
+              ws.load('', [peaks], duration);
+              return;
+            }
+          }
+        } catch { /* fall through to blob */ }
+
+        // Fallback: fetch audio blob
         try {
           const response = await fetch(api.streamUrl(song.id));
           if (!response.ok) throw new Error(`HTTP ${response.status}`);

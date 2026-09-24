@@ -16,7 +16,7 @@ from models.edit import EditedSong
 from models.category import Category
 from models.session import SessionItem
 from models.playback_settings import SongPlaybackSettings
-from schemas.song import SongResponse, SongListResponse, SongUpdate, PlaybackSettingsResponse, PlaybackSettingsUpdate
+from schemas.song import SongResponse, SongListResponse, SongBriefListResponse, SongUpdate, PlaybackSettingsResponse, PlaybackSettingsUpdate
 from services.analysis import analyze_audio_fast
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _matches_search(search: str, title: str, artist: str) -> bool:
     return all(token in combined for token in tokens)
 
 
-@router.get("", response_model=SongListResponse)
+@router.get("", response_model=SongBriefListResponse)
 def list_songs(
     search: str = Query("", description="Search by title or artist"),
     category_id: int | None = Query(None),
@@ -72,7 +72,7 @@ def list_songs(
             seen.add(s.id)
             unique.append(s)
 
-    return SongListResponse(songs=unique, total=len(unique))
+    return SongBriefListResponse(songs=unique, total=len(unique))
 
 
 @router.get("/{song_id}", response_model=SongResponse)

@@ -31,6 +31,10 @@ interface PlayerStore {
   // Played tracking (by song_id, not item id)
   playedSongIds: Set<number>;
 
+  // Loading state (true while audio is downloading/decoding)
+  isLoadingSong: boolean;
+  setIsLoadingSong: (loading: boolean) => void;
+
   // Transition state
   isTransitioning: boolean;
   nextTransitionSongTitle: string | null;
@@ -89,10 +93,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   shuffleEnabled: false,
   shuffledOrder: [],
   playedSongIds: new Set(),
+  isLoadingSong: false,
   isTransitioning: false,
   nextTransitionSongTitle: null,
   sessionPlayerActive: false,
   restrictedMode: true,
+
+  setIsLoadingSong: (loading) => set({ isLoadingSong: loading }),
 
   setTransitionState: (isTransitioning, nextSongTitle) => {
     set({ isTransitioning, nextTransitionSongTitle: nextSongTitle });
@@ -160,6 +167,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       currentItemId: item.id,
       currentSongId: item.song_id,
       isPlaying: true,
+      isLoadingSong: true,
       currentTime: 0,
       duration: item.song.duration_seconds,
     });
@@ -246,7 +254,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       state.playItem(nextItem);
     } else {
       // No more songs
-      set({ isPlaying: false });
+      set({ isPlaying: false, isLoadingSong: false });
     }
   },
 

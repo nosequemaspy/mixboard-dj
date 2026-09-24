@@ -4,7 +4,6 @@ import { getEffectivePlaybackSettings, getEffectiveMuteSections } from '../types
 import { AudioEngine } from './AudioEngine';
 type TransitionType = 'smooth' | 'sharp' | 'linear' | 'cut';
 
-const SKIP_CROSSFADE_MS = 400;
 
 interface SongPlaybackConfig {
   startTime: number;
@@ -372,7 +371,7 @@ export class PlaybackEngine {
 
   // ─── Skip crossfade (manual next/prev) ────────────────────
 
-  /** Quick smooth crossfade for manual skip — preloaded song on preload deck */
+  /** Crossfade for manual skip — uses song's configured transition duration and easing */
   private doSkipCrossfade(item: SessionItem, preloadNext?: SessionItem | null) {
     this.cancelTransition();
 
@@ -387,16 +386,47 @@ export class PlaybackEngine {
     }
     this.engine.play(this.preloadDeck);
 
+    // 'cut' type — skip animation entirely, instant swap
+    if (config.transitionType === 'cut') {
+      this.engine.stop(this.activeDeck);
+      this.engine.setTransitionGain(this.activeDeck, 0);
+      this.engine.setTransitionGain(this.preloadDeck, 1);
+      this.currentItem = item;
+      this.currentConfig = config;
+      this.currentDuration = this.preloadedDuration;
+      this.swapDecks();
+      this.onTransitionChange?.(false, null);
+      this.onSongStart?.(item);
+      if (preloadNext) this.preloadSong(preloadNext);
+      return;
+    }
+
     this.isTransitioning = true;
     // Transition indicator was already set by the subscription before playSong was called
 
+    const durationMs = config.transitionDuration * 1000;
     const startTimestamp = performance.now();
 
     const animate = (now: number) => {
       if (!this.active) return;
       const elapsed = now - startTimestamp;
-      const progress = Math.min(elapsed / SKIP_CROSSFADE_MS, 1);
-      const eased = Math.sin(progress * Math.PI / 2);
+      const progress = Math.min(elapsed / durationMs, 1);
+
+      let eased: number;
+      switch (config.transitionType) {
+        case 'sharp':
+          eased = progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+          break;
+        case 'linear':
+          eased = progress;
+          break;
+        case 'smooth':
+        default:
+          eased = Math.sin(progress * Math.PI / 2);
+          break;
+      }
 
       this.engine.setTransitionGain(this.activeDeck, 1 - eased);
       this.engine.setTransitionGain(this.preloadDeck, eased);

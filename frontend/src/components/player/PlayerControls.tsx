@@ -9,6 +9,7 @@ const SPEED_PRESETS = [0.75, 1.0, 1.25, 1.5];
 
 export function PlayerControls() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
+  const isLoadingSong = usePlayerStore(s => s.isLoadingSong);
   const shuffleEnabled = usePlayerStore(s => s.shuffleEnabled);
   const speed = usePlayerStore(s => s.getCurrentPlaybackSpeed());
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
@@ -129,7 +130,12 @@ export function PlayerControls() {
       {/* Previous */}
       <button
         onClick={handlePrev}
-        className="p-2 sm:p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center"
+        disabled={isLoadingSong && isPlaying}
+        className={`p-2 sm:p-3 rounded-full transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center ${
+          isLoadingSong && isPlaying
+            ? 'text-text-muted opacity-50 cursor-not-allowed'
+            : 'text-text-primary hover:bg-bg-tertiary'
+        }`}
         title="Anterior"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -141,9 +147,13 @@ export function PlayerControls() {
       <button
         onClick={handlePlayPause}
         className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-colors shadow-lg flex-shrink-0"
-        title={isPlaying ? 'Pausar' : 'Reproducir'}
+        title={isLoadingSong && isPlaying ? 'Cargando...' : isPlaying ? 'Pausar' : 'Reproducir'}
       >
-        {isPlaying ? (
+        {isLoadingSong && isPlaying ? (
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="animate-spin">
+            <path d="M12 2a10 10 0 0 1 10 10" />
+          </svg>
+        ) : isPlaying ? (
           <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 4h4v16H6zm8 0h4v16h-4z" />
           </svg>
@@ -157,7 +167,12 @@ export function PlayerControls() {
       {/* Next */}
       <button
         onClick={handleNext}
-        className="p-2 sm:p-3 rounded-full text-text-primary hover:bg-bg-tertiary transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center"
+        disabled={isLoadingSong && isPlaying}
+        className={`p-2 sm:p-3 rounded-full transition-colors min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center ${
+          isLoadingSong && isPlaying
+            ? 'text-text-muted opacity-50 cursor-not-allowed'
+            : 'text-text-primary hover:bg-bg-tertiary'
+        }`}
         title="Siguiente"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">

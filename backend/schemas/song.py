@@ -55,6 +55,27 @@ class PlaybackSettingsUpdate(BaseModel):
     playback_speed: Optional[float] = None
 
 
+class SongBrief(BaseModel):
+    """Song without waveform_peaks — used in list and session endpoints to reduce payload."""
+    id: int
+    title: str
+    artist: str
+    duration_seconds: float
+    bpm: Optional[float]
+    key: Optional[str]
+    file_path: str
+    file_format: str
+    source_url: Optional[str]
+    source_type: str
+    stems_status: str
+    created_at: datetime
+    categories: list[CategoryInSong] = []
+    stems: list[StemInSong] = []
+    playback_settings: Optional[PlaybackSettingsResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
 class SongResponse(BaseModel):
     id: int
     title: str
@@ -74,6 +95,11 @@ class SongResponse(BaseModel):
     playback_settings: Optional[PlaybackSettingsResponse] = None
 
     model_config = {"from_attributes": True}
+
+
+class SongBriefListResponse(BaseModel):
+    songs: list[SongBrief]
+    total: int
 
 
 class SongListResponse(BaseModel):

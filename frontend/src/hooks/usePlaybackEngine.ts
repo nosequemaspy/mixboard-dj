@@ -38,10 +38,13 @@ export function usePlaybackEngine() {
 
         // If no more songs to play, stop the engine
         if (!usePlayerStore.getState().isPlaying) {
+          usePlayerStore.getState().setIsLoadingSong(false);
           engine.stop();
         }
       },
       onSongStart: (item) => {
+        // Audio is loaded and playing — clear loading state
+        usePlayerStore.getState().setIsLoadingSong(false);
         // Mark the song as played when it starts
         usePlayerStore.getState().markPlayed(item.song_id);
       },

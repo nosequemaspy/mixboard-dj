@@ -3,7 +3,7 @@ from typing import Optional, Literal
 
 from pydantic import BaseModel
 
-from schemas.song import SongResponse
+from schemas.song import SongBrief
 
 
 # --- Session ---
@@ -69,7 +69,7 @@ class SessionItemResponse(BaseModel):
     transition_type: Optional[str] = None
     playback_speed: Optional[float] = None
     mute_sections: Optional[str] = None
-    song: SongResponse
+    song: SongBrief
 
     model_config = {"from_attributes": True}
 

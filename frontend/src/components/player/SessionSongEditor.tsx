@@ -275,7 +275,7 @@ export function SessionSongEditor() {
     setSelectedClipId(null);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
 
-  // --- WaveSurfer lifecycle: use pre-computed peaks when available, blob fallback ---
+  // --- WaveSurfer lifecycle: use pre-computed peaks when available, fetch from API, blob fallback ---
 
   useEffect(() => {
     if (!waveContainerRef.current || !song) return;
@@ -290,7 +290,6 @@ export function SessionSongEditor() {
 
     const regionsPlugin = RegionsPlugin.create();
     let cancelled = false;
-    let usedPeaks = false;
 
     const wsOptions: any = {
       container: waveContainerRef.current,
@@ -318,7 +317,8 @@ export function SessionSongEditor() {
       ],
     };
 
-    // Use pre-computed peaks for instant rendering (no audio download needed)
+    // Try to use inline peaks first (may be null if from session/list response)
+    let usedPeaks = false;
     if (song.waveform_peaks) {
       try {
         const peaks: number[] = JSON.parse(song.waveform_peaks);
@@ -327,7 +327,7 @@ export function SessionSongEditor() {
           wsOptions.duration = song.duration_seconds;
           usedPeaks = true;
         }
-      } catch { /* parse failed, will load via blob */ }
+      } catch { /* parse failed */ }
     }
 
     const ws = WaveSurfer.create(wsOptions);
@@ -337,14 +337,6 @@ export function SessionSongEditor() {
       setIsLoading(false);
       setLoadError(null);
     });
-    if (!usedPeaks) {
-      // Only show errors when loading from blob (peaks mode has expected media element errors)
-      ws.on('error', (err: any) => {
-        console.error('WaveSurfer error:', err);
-        setIsLoading(false);
-        setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
-      });
-    }
     ws.on('click', (relativeX: number) => {
       const dur = ws.getDuration();
       if (dur <= 0) return;
@@ -359,13 +351,36 @@ export function SessionSongEditor() {
     regionsRef.current = regionsPlugin;
 
     if (usedPeaks) {
-      // Peaks render instantly — set state directly as fallback in case 'ready' doesn't fire
+      // Peaks render instantly
       setWsDuration(song.duration_seconds);
       setIsLoading(false);
     } else {
-      // No peaks available — fetch audio blob with retry
-      const fetchWithRetry = async (retries = 2, delay = 1500) => {
-        for (let attempt = 0; attempt <= retries; attempt++) {
+      // No inline peaks — fetch from single-song API (lightweight, returns peaks without downloading audio)
+      // Falls back to audio blob if API doesn't have peaks either
+      const loadPeaksOrBlob = async () => {
+        // First try: fetch peaks from GET /api/songs/{id} (small JSON, ~5KB)
+        try {
+          if (cancelled) return;
+          const fullSong = await api.getSong(song.id);
+          if (cancelled) return;
+          if (fullSong.waveform_peaks) {
+            const peaks: number[] = JSON.parse(fullSong.waveform_peaks);
+            if (peaks.length > 0) {
+              ws.load('', [peaks], song.duration_seconds);
+              setWsDuration(song.duration_seconds);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch { /* API failed, fall through to blob */ }
+
+        // Fallback: fetch audio blob with retry
+        ws.on('error', (err: any) => {
+          console.error('WaveSurfer error:', err);
+          setIsLoading(false);
+          setLoadError(typeof err === 'string' ? err : 'Error al cargar audio');
+        });
+        for (let attempt = 0; attempt <= 2; attempt++) {
           try {
             if (cancelled) return;
             const response = await fetch(api.streamUrl(song.id));
@@ -380,16 +395,16 @@ export function SessionSongEditor() {
             return;
           } catch (err: any) {
             if (cancelled) return;
-            if (attempt < retries) {
-              await new Promise(r => setTimeout(r, delay));
-            } else {
+            if (attempt >= 2) {
               setLoadError(`Error al cargar: ${err.message}`);
               setIsLoading(false);
+            } else {
+              await new Promise(r => setTimeout(r, 1500));
             }
           }
         }
       };
-      fetchWithRetry();
+      loadPeaksOrBlob();
     }
 
     return () => {
