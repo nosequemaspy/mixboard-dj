@@ -843,6 +843,12 @@ export function SessionSongEditor() {
       await useLibraryStore.getState().fetchSongs();
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
+
+      // If cuts were applied, force waveform reload and regenerate peaks
+      if (cutSectionsData.length > 0) {
+        setRetryKey(k => k + 1);
+        api.reanalyzeSongs().catch(() => {});
+      }
     } catch (err: any) {
       console.error('Failed to save:', err);
       alert(err.message || 'Error al guardar');

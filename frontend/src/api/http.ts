@@ -40,6 +40,7 @@ export const api = {
   },
   updateSong: (id: number, data: any) => request<any>(`/songs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSong: (id: number) => request<any>(`/songs/${id}`, { method: 'DELETE' }),
+  reanalyzeSongs: () => request<any>('/songs/reanalyze', { method: 'POST' }),
 
   // Categories
   getCategories: () => request<any[]>('/categories'),
