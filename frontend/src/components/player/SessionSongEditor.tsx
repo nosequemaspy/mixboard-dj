@@ -167,6 +167,7 @@ export function SessionSongEditor() {
   const [showMobileControls, setShowMobileControls] = useState(false);
   const [muteStartMark, setMuteStartMark] = useState<number | null>(null);
   const [cutStartMark, setCutStartMark] = useState<number | null>(null);
+  const [showStemPrompt, setShowStemPrompt] = useState(false);
 
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -210,6 +211,11 @@ export function SessionSongEditor() {
     });
     return unsub;
   }, [song?.id, song?.stems_status]);
+
+  // Dismiss stem prompt when stems become ready
+  useEffect(() => {
+    if (canMuteVocals) setShowStemPrompt(false);
+  }, [canMuteVocals]);
 
   // --- Init editing state from session item ---
   useEffect(() => {
@@ -322,7 +328,10 @@ export function SessionSongEditor() {
   }, [pushHistory]);
 
   const handleMuteAction = useCallback(() => {
-    if (!canMuteVocals) return;
+    if (!canMuteVocals) {
+      setShowStemPrompt(true);
+      return;
+    }
     const time = playerTimeRef.current;
     if (muteStartMarkRef.current === null) {
       setMuteStartMark(time);
@@ -724,6 +733,7 @@ export function SessionSongEditor() {
 
   const handleSeparateStems = async () => {
     if (!song || separatingStems) return;
+    setShowStemPrompt(false);
     try { await api.separateStems(song.id); startStemSeparation(song.id); } catch {}
   };
 
@@ -823,7 +833,7 @@ export function SessionSongEditor() {
         <div className="flex items-center shrink-0 sm:hidden">
           <TBtn icon={<IconScissors />} label="Dividir" onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
           <TBtn icon={<IconTransition />} label="Trans" onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
-          <TBtn icon={<IconMicOff />} label={muteStartMark !== null ? 'Mute▸' : 'Mute'} onClick={handleMuteAction} disabled={!canMuteVocals}
+          <TBtn icon={<IconMicOff />} label={separatingStems ? '...' : muteStartMark !== null ? 'Mute▸' : 'Mute'} onClick={handleMuteAction} disabled={separatingStems}
             active={muteStartMark !== null} activeClass="bg-purple-500/20 text-purple-400" />
           <TBtn icon={<IconTrash />} label={cutStartMark !== null ? 'Del▸' : 'Eliminar'} onClick={handleCutAction}
             active={cutStartMark !== null} activeClass="bg-danger/20 text-danger" />
@@ -858,8 +868,8 @@ export function SessionSongEditor() {
         <TBtn icon={<IconTransition />} label="Trans" shortcut="T"
           onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
-        <TBtn icon={<IconMicOff />} label={muteStartMark !== null ? 'Mute ▸' : 'Mute'} shortcut="M"
-          onClick={handleMuteAction} disabled={!canMuteVocals}
+        <TBtn icon={<IconMicOff />} label={separatingStems ? 'Separando...' : muteStartMark !== null ? 'Mute ▸' : 'Mute'} shortcut="M"
+          onClick={handleMuteAction} disabled={separatingStems}
           active={muteStartMark !== null} activeClass="bg-purple-500/20 text-purple-400" />
         <TBtn icon={<IconTrash />} label={cutStartMark !== null ? 'Eliminar ▸' : 'Eliminar'} shortcut="D"
           onClick={handleCutAction}
@@ -876,6 +886,31 @@ export function SessionSongEditor() {
           </span>
         )}
       </div>
+
+      {/* === Stem separation prompt === */}
+      {showStemPrompt && !canMuteVocals && !separatingStems && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border-b border-purple-500/20">
+          <IconMicOff />
+          <span className="text-[11px] text-purple-300 flex-1">Para silenciar vocales se necesita separar los stems de esta cancion.</span>
+          <button onClick={handleSeparateStems}
+            className="px-2.5 py-0.5 text-[11px] bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors font-medium shrink-0"
+          >Separar stems</button>
+          <button onClick={() => setShowStemPrompt(false)}
+            className="text-text-muted hover:text-text-primary transition-colors shrink-0 p-0.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+      )}
+      {separatingStems && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 border-b border-warning/20">
+          <svg className="animate-spin w-3.5 h-3.5 text-warning shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span className="text-[11px] text-warning font-medium">Separando stems... El mute estara disponible cuando termine.</span>
+        </div>
+      )}
 
       {/* === Waveform === */}
       <div className="relative h-24 sm:h-40 bg-bg-primary overflow-x-auto overflow-y-hidden"
