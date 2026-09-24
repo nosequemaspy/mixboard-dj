@@ -169,6 +169,8 @@ def update_song(song_id: int, data: SongUpdate, db: Session = Depends(get_db)):
     if data.category_ids is not None:
         categories = db.query(Category).filter(Category.id.in_(data.category_ids)).all()
         song.categories = categories
+    if data.cut_sections is not None:
+        song.cut_sections = data.cut_sections if data.cut_sections else None
 
     db.commit()
     db.refresh(song)

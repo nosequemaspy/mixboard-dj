@@ -32,6 +32,7 @@ class Song(Base):
     source_type = Column(String(20), default="local")  # local, youtube
     stems_status = Column(String(20), default="none")  # none, processing, ready, error
     waveform_peaks = Column(Text, nullable=True)  # JSON array of peaks
+    cut_sections = Column(Text, nullable=True)  # JSON array of {start, end}
     created_at = Column(DateTime, default=datetime.utcnow)
 
     categories = relationship("Category", secondary=song_categories, back_populates="songs")

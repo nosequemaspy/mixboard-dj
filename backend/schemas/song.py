@@ -17,6 +17,7 @@ class SongUpdate(BaseModel):
     bpm: Optional[float] = None
     key: Optional[str] = None
     category_ids: Optional[list[int]] = None
+    cut_sections: Optional[str] = None
 
 
 class CategoryInSong(BaseModel):
@@ -68,6 +69,7 @@ class SongBrief(BaseModel):
     source_url: Optional[str]
     source_type: str
     stems_status: str
+    cut_sections: Optional[str] = None
     created_at: datetime
     categories: list[CategoryInSong] = []
     stems: list[StemInSong] = []
@@ -89,6 +91,7 @@ class SongResponse(BaseModel):
     source_type: str
     stems_status: str
     waveform_peaks: Optional[str]
+    cut_sections: Optional[str] = None
     created_at: datetime
     categories: list[CategoryInSong] = []
     stems: list[StemInSong] = []

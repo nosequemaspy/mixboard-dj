@@ -21,6 +21,7 @@ export interface Song {
   source_type: string;
   stems_status: string;
   waveform_peaks: string | null;
+  cut_sections: string | null;
   created_at: string;
   categories: CategoryInSong[];
   stems: StemInSong[];
@@ -182,7 +183,6 @@ export interface SessionItem {
   transition_type: string | null;
   playback_speed: number | null;
   mute_sections: string | null;
-  cut_sections: string | null;
   song: Song;
 }
 
@@ -225,10 +225,10 @@ export function getEffectiveMuteSections(item: SessionItem): MuteSection[] {
   try { return JSON.parse(item.mute_sections); } catch { return []; }
 }
 
-/** Parse cut_sections JSON from a session item into typed array */
+/** Parse cut_sections JSON from the song (song-level, not per-session) */
 export function getEffectiveCutSections(item: SessionItem): MuteSection[] {
-  if (!item.cut_sections) return [];
-  try { return JSON.parse(item.cut_sections); } catch { return []; }
+  if (!item.song.cut_sections) return [];
+  try { return JSON.parse(item.song.cut_sections); } catch { return []; }
 }
 
 export interface Suggestion {

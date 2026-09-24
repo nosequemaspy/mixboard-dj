@@ -142,7 +142,7 @@ export function SessionSongEditor() {
     try { return JSON.parse(existingMuteSectionsJson); } catch { return []; }
   }, [existingMuteSectionsJson]);
 
-  const existingCutSectionsJson = currentItem?.cut_sections ?? '';
+  const existingCutSectionsJson = song?.cut_sections ?? '';
   const existingCutSections = useMemo<MuteSection[]>(() => {
     if (!existingCutSectionsJson) return [];
     try { return JSON.parse(existingCutSectionsJson); } catch { return []; }
@@ -168,6 +168,11 @@ export function SessionSongEditor() {
   const [muteStartMark, setMuteStartMark] = useState<number | null>(null);
   const [cutStartMark, setCutStartMark] = useState<number | null>(null);
   const [showStemPrompt, setShowStemPrompt] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderColor, setNewFolderColor] = useState('#6366f1');
+  const folderPickerRef = useRef<HTMLDivElement>(null);
 
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
@@ -351,11 +356,11 @@ export function SessionSongEditor() {
     }
   }, [applyStatusRange]);
 
-  const resetClipToKeep = useCallback(() => {
+  const toggleClipCut = useCallback(() => {
     if (!selectedClipId) return;
     pushHistory();
     setClips(prev => prev.map(c =>
-      c.id === selectedClipId ? { ...c, status: 'keep' } : c
+      c.id === selectedClipId ? { ...c, status: c.status === 'cut' ? 'keep' : 'cut' } : c
     ));
   }, [selectedClipId, pushHistory]);
 
@@ -540,7 +545,7 @@ export function SessionSongEditor() {
       } else if (e.code === 'KeyD' && !e.ctrlKey) {
         e.preventDefault(); handleCutAction();
       } else if ((e.code === 'Delete' || e.code === 'Backspace') && selectedClipId) {
-        e.preventDefault(); resetClipToKeep();
+        e.preventDefault(); toggleClipCut();
       } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault(); undo();
       } else if (e.code === 'Escape') {
@@ -551,7 +556,7 @@ export function SessionSongEditor() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, setTransitionAtPlayhead, handleMuteAction, handleCutAction, resetClipToKeep, undo, selectedClipId]);
+  }, [splitAtPlayhead, setTransitionAtPlayhead, handleMuteAction, handleCutAction, toggleClipCut, undo, selectedClipId]);
 
   // --- Init clips on duration ready ---
 
@@ -753,6 +758,12 @@ export function SessionSongEditor() {
         .filter(c => c.status === 'cut')
         .map(c => ({ start: c.start, end: c.end }));
 
+      // Save cut sections to the Song (permanent, shared across sessions)
+      await api.updateSong(song.id, {
+        cut_sections: cutSectionsData.length > 0 ? JSON.stringify(cutSectionsData) : '',
+      });
+
+      // Save per-session settings (transitions, mute, speed) to session item
       await api.updateSessionItem(sessionId, currentItem.id, {
         start_time: startTime > 0.5 ? startTime : 0.0,
         end_time: endTime >= song.duration_seconds - 0.5 ? 0.0 : endTime,
@@ -760,9 +771,10 @@ export function SessionSongEditor() {
         transition_type: transitionType,
         playback_speed: playbackSpeed,
         mute_sections: muteSectionsData.length > 0 ? JSON.stringify(muteSectionsData) : '',
-        cut_sections: cutSectionsData.length > 0 ? JSON.stringify(cutSectionsData) : '',
       }, password);
 
+      // Refresh both library (for song.cut_sections) and session stores
+      await useLibraryStore.getState().fetchSongs();
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
     } catch (err: any) {
@@ -788,6 +800,57 @@ export function SessionSongEditor() {
     setMuteStartMark(null);
     setCutStartMark(null);
   };
+
+  // --- Folder picker handlers ---
+
+  const handleAssignFolder = async (folderId: number | null) => {
+    if (!currentItem) return;
+    const sessionId = usePlayerStore.getState().sessionId;
+    const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
+    if (!sessionId) return;
+    try {
+      await api.assignItemFolder(sessionId, currentItem.id, folderId, password);
+      await useSessionStore.getState().fetchActiveSession(sessionId);
+      usePlayerStore.getState().syncFromSessionStore();
+    } catch (err: any) {
+      console.error('Failed to assign folder:', err);
+    }
+    setShowFolderPicker(false);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    const sessionId = usePlayerStore.getState().sessionId;
+    const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
+    if (!sessionId) return;
+    try {
+      const folder = await api.createSessionFolder(sessionId, { name: newFolderName.trim(), color: newFolderColor }, password);
+      await api.assignItemFolder(sessionId, currentItem!.id, folder.id, password);
+      await useSessionStore.getState().fetchActiveSession(sessionId);
+      usePlayerStore.getState().syncFromSessionStore();
+    } catch (err: any) {
+      console.error('Failed to create folder:', err);
+    }
+    setCreatingFolder(false);
+    setNewFolderName('');
+    setNewFolderColor('#6366f1');
+    setShowFolderPicker(false);
+  };
+
+  // Close folder picker on click outside
+  useEffect(() => {
+    if (!showFolderPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
+        setShowFolderPicker(false);
+        setCreatingFolder(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFolderPicker]);
+
+  const FOLDER_COLORS = ['#6366f1', '#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6'];
 
   const displayDuration = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? playerDuration);
 
@@ -822,9 +885,78 @@ export function SessionSongEditor() {
         <div className="w-px h-4 bg-border/30 shrink-0 hidden sm:block" />
 
         <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
-          {itemFolder && (
-            <span className="w-2 h-2 rounded-full shrink-0 hidden sm:inline-block" style={{ backgroundColor: itemFolder.color }} title={itemFolder.name} />
-          )}
+          {/* Folder picker */}
+          <div className="relative shrink-0 hidden sm:block" ref={folderPickerRef}>
+            <button
+              onClick={() => setShowFolderPicker(!showFolderPicker)}
+              className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-bg-hover transition-colors"
+              title={itemFolder ? itemFolder.name : 'Sin etiqueta'}
+            >
+              <span className="w-2.5 h-2.5 rounded-full border border-white/20"
+                style={{ backgroundColor: itemFolder?.color ?? '#4b5563' }} />
+              <span className="text-[9px] text-text-muted max-w-[60px] truncate">
+                {itemFolder?.name ?? 'Etiqueta'}
+              </span>
+            </button>
+            {showFolderPicker && (
+              <div className="absolute top-full left-0 mt-1 w-44 bg-bg-secondary border border-border rounded-lg shadow-xl z-50 py-1">
+                {/* Unassign option */}
+                <button
+                  onClick={() => handleAssignFolder(null)}
+                  className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
+                    !itemFolder ? 'text-accent font-medium' : 'text-text-secondary'
+                  }`}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full border border-border/60 bg-bg-tertiary" />
+                  Sin etiqueta
+                </button>
+                {folders.map(f => (
+                  <button key={f.id}
+                    onClick={() => handleAssignFolder(f.id)}
+                    className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
+                      currentItem.folder_id === f.id ? 'text-accent font-medium' : 'text-text-secondary'
+                    }`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                    <span className="truncate">{f.name}</span>
+                  </button>
+                ))}
+                <div className="border-t border-border/40 mt-1 pt-1">
+                  {!creatingFolder ? (
+                    <button
+                      onClick={() => setCreatingFolder(true)}
+                      className="w-full text-left px-2.5 py-1.5 text-[11px] text-accent hover:bg-bg-hover transition-colors"
+                    >+ Crear etiqueta...</button>
+                  ) : (
+                    <div className="px-2 py-1.5 flex flex-col gap-1.5">
+                      <input
+                        autoFocus
+                        value={newFolderName}
+                        onChange={e => setNewFolderName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingFolder(false); }}
+                        placeholder="Nombre..."
+                        className="w-full bg-bg-primary border border-border/50 rounded px-1.5 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent/60"
+                      />
+                      <div className="flex items-center gap-1">
+                        {FOLDER_COLORS.map(c => (
+                          <button key={c} onClick={() => setNewFolderColor(c)}
+                            className={`w-4 h-4 rounded-full transition-all ${newFolderColor === c ? 'ring-2 ring-white/60 scale-110' : 'hover:scale-110'}`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => setCreatingFolder(false)}
+                          className="flex-1 text-[10px] text-text-muted hover:text-text-primary py-0.5">Cancelar</button>
+                        <button onClick={handleCreateFolder}
+                          className="flex-1 text-[10px] bg-accent text-white rounded py-0.5 hover:bg-accent-hover font-medium">Crear</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <span className="text-[11px] text-text-primary font-medium truncate">{song.title}</span>
           <span className="text-[10px] text-text-muted truncate hidden sm:inline">{song.artist}</span>
         </div>

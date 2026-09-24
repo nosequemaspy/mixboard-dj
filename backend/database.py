@@ -54,6 +54,15 @@ def _migrate(engine_):
                     if col_name not in cols:
                         conn.execute(text(f"ALTER TABLE session_items ADD COLUMN {col_name} {col_type}"))
                 conn.commit()
+            # --- songs table migrations ---
+            if "songs" in insp.get_table_names():
+                cols = [c["name"] for c in insp.get_columns("songs")]
+                for col_name, col_type in [
+                    ("cut_sections", "TEXT"),
+                ]:
+                    if col_name not in cols:
+                        conn.execute(text(f"ALTER TABLE songs ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
     except Exception:
         pass  # Column may already exist from a concurrent deploy
 
