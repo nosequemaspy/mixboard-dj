@@ -96,6 +96,13 @@ const IconUndo = () => (
   </svg>
 );
 
+const IconTransition = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <line x1="4" y1="12" x2="20" y2="12" /><polyline points="16 8 20 12 16 16" />
+    <line x1="12" y1="4" x2="12" y2="20" strokeDasharray="2 2" />
+  </svg>
+);
+
 const IconTrash = () => (
   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
@@ -260,6 +267,13 @@ export function SessionSongEditor() {
     setClips(newClips);
     setSelectedClipId(newClips[idx + 1].id);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
+
+  const setTransitionAtPlayhead = useCallback(() => {
+    const time = playerTimeRef.current;
+    const dur = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? 0);
+    if (dur <= 0 || time < startTimeRef.current + 1 || time > dur) return;
+    setEndTime(Math.round(time * 10) / 10);
+  }, [wsDuration, song?.duration_seconds]);
 
   const toggleClipMute = useCallback(() => {
     if (!selectedClipId || !canMuteVocals) return;
@@ -459,6 +473,8 @@ export function SessionSongEditor() {
         store.setIsPlaying(!store.isPlaying);
       } else if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault(); splitAtPlayhead();
+      } else if (e.code === 'KeyT' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault(); setTransitionAtPlayhead();
       } else if (e.code === 'KeyM' && !e.ctrlKey && selectedClipId) {
         e.preventDefault(); toggleClipMute();
       } else if (e.code === 'KeyD' && !e.ctrlKey && selectedClipId) {
@@ -473,7 +489,7 @@ export function SessionSongEditor() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [splitAtPlayhead, toggleClipMute, toggleClipCut, resetClipToKeep, undo, selectedClipId]);
+  }, [splitAtPlayhead, setTransitionAtPlayhead, toggleClipMute, toggleClipCut, resetClipToKeep, undo, selectedClipId]);
 
   // --- Init clips on duration ready ---
 
@@ -735,6 +751,7 @@ export function SessionSongEditor() {
         {/* Mobile toolbar buttons (hidden on sm+) */}
         <div className="flex items-center shrink-0 sm:hidden">
           <TBtn icon={<IconScissors />} label="Dividir" onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
+          <TBtn icon={<IconTransition />} label="Trans" onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
           <TBtn icon={<IconMicOff />} label="Mute" onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
             active={selectedClip?.status === 'mute'} activeClass="bg-warning/20 text-warning" />
           <TBtn icon={<IconTrash />} label="Eliminar" onClick={toggleClipCut} disabled={!selectedClipId}
@@ -767,6 +784,8 @@ export function SessionSongEditor() {
       <div className="hidden sm:flex items-center gap-0.5 px-2 py-0.5 border-b border-border/30 bg-bg-primary/60">
         <TBtn icon={<IconScissors />} label="Dividir" shortcut="S"
           onClick={splitAtPlayhead} disabled={!displayDuration || clips.length === 0} />
+        <TBtn icon={<IconTransition />} label="Trans" shortcut="T"
+          onClick={setTransitionAtPlayhead} disabled={!displayDuration} />
         <div className="w-px h-3.5 bg-border/20 mx-0.5" />
         <TBtn icon={<IconMicOff />} label="Mute" shortcut="M"
           onClick={toggleClipMute} disabled={!selectedClipId || !canMuteVocals}
