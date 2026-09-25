@@ -36,6 +36,7 @@ export class PlaybackEngine {
   private monitorAnimId: number | null = null;
   private isTransitioning = false;
   private active = false;
+  private pendingLoad = false;
 
   private preloadedItem: SessionItem | null = null;
   private preloadedDuration = 0;
@@ -78,7 +79,7 @@ export class PlaybackEngine {
         // We handle time monitoring ourselves
       },
       (deckId: DeckId) => {
-        if (deckId === this.activeDeck && !this.isTransitioning) {
+        if (deckId === this.activeDeck && !this.isTransitioning && !this.pendingLoad) {
           this.onSongEnd?.();
         }
       }
@@ -118,7 +119,7 @@ export class PlaybackEngine {
         const effectiveEnd = config.endTime ?? this.currentDuration;
         const transitionPoint = effectiveEnd - config.transitionDuration;
 
-        if (time >= transitionPoint && time < effectiveEnd) {
+        if (time >= transitionPoint && time < effectiveEnd && !this.pendingLoad) {
           this.beginTransition();
         }
       }
@@ -174,13 +175,16 @@ export class PlaybackEngine {
       // Keep old song playing on active deck while loading new song on preload deck
       this.engine.stop(this.preloadDeck);
       this.clearPreload();
+      this.pendingLoad = true;
 
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       let duration: number;
       try {
         duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems, bustCache);
+        this.pendingLoad = false;
         if (gen !== this.playGeneration) return;
       } catch (e) {
+        this.pendingLoad = false;
         if (gen !== this.playGeneration) return;
         console.error('Failed to load song:', e);
         this.onTransitionChange?.(false, null);

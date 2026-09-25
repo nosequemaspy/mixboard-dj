@@ -1,7 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/playerStore';
 import { getPlaybackEngine } from './usePlaybackEngine';
 import { getEffectivePlaybackSettings } from '../types';
+
+// Tiny silent MP3 (1 frame, ~140 bytes) encoded as base64 data URL.
+// Looping this on an <audio> element keeps the browser audio session alive
+// on mobile, preventing the AudioContext from being suspended in background.
+const SILENT_MP3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYlPfGiAAAAAAD/+1DEAAAGAAGn9AAAIgAANP8AAABM//tQxBUAAADSAAAAAAAAANIAAAAA';
 
 export function useMediaSession() {
   const currentSongId = usePlayerStore(s => s.currentSongId);
@@ -11,6 +16,30 @@ export function useMediaSession() {
   const duration = usePlayerStore(s => s.duration);
   const isTransitioning = usePlayerStore(s => s.isTransitioning);
   const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
+
+  // Silent audio loop to keep browser audio session alive on mobile
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    if (isPlaying) {
+      if (!silentAudioRef.current) {
+        const audio = new Audio(SILENT_MP3);
+        audio.loop = true;
+        audio.volume = 0.01; // near-silent
+        silentAudioRef.current = audio;
+      }
+      silentAudioRef.current.play().catch(() => {});
+    } else {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+      }
+    }
+    return () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current = null;
+      }
+    };
+  }, [isPlaying]);
 
   // Update metadata when song changes or transition state changes
   useEffect(() => {

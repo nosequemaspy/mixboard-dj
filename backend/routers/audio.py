@@ -76,10 +76,11 @@ def range_file_response(file_path: Path, request: Request):
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(content_length),
+                "Cache-Control": "no-store",
             },
         )
 
-    return FileResponse(file_path, media_type=content_type, headers={"Accept-Ranges": "bytes"})
+    return FileResponse(file_path, media_type=content_type, headers={"Accept-Ranges": "bytes", "Cache-Control": "no-store"})
 
 
 @router.get("/stream/{song_id}")
