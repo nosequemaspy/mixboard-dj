@@ -112,7 +112,6 @@ export class PlaybackEngine {
           const cutSection = cutSects.find(s => time >= s.start && time < s.end);
           if (cutSection) {
             this.engine.seek(this.activeDeck, cutSection.end);
-            return;
           }
         }
 
@@ -571,7 +570,9 @@ export class PlaybackEngine {
    *  Stops both decks and clears all state so next play reloads fresh audio. */
   invalidateCurrentSong() {
     this.stop(); // stops both decks, cancels transition, clears state
-    this.stopMonitor();
+    // Don't call stopMonitor() — the monitor loop should keep running.
+    // With currentItem=null (set by stop()), the monitor safely no-ops
+    // until playSong() sets a new currentItem.
     this.editorCutSections = null;
     this.bustCacheOnNextLoad = true;
   }
