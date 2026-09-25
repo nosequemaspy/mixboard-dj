@@ -27,6 +27,11 @@ function getPlaybackConfig(item: SessionItem): SongPlaybackConfig {
   };
 }
 
+/** Derive a cache version from a song's duration — changes when file is physically edited */
+function songCacheVersion(item: SessionItem): string {
+  return String(Math.round(item.song.duration_seconds * 100));
+}
+
 export class PlaybackEngine {
   private engine: AudioEngine;
   private activeDeck: DeckId = 'A';
@@ -165,7 +170,7 @@ export class PlaybackEngine {
     // Case 3: Not preloaded — load fresh
     const gen = ++this.playGeneration;
     const wasPlaying = !this.isTransitioning && this.engine.isPlaying(this.activeDeck);
-    const bustCache = this.bustCacheOnNextLoad;
+    const cacheVer = this.bustCacheOnNextLoad ? String(Date.now()) : songCacheVersion(item);
     this.bustCacheOnNextLoad = false;
 
     // Cancel any ongoing transition
@@ -180,7 +185,7 @@ export class PlaybackEngine {
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       let duration: number;
       try {
-        duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems, bustCache);
+        duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems, cacheVer);
         this.pendingLoad = false;
         if (gen !== this.playGeneration) return;
       } catch (e) {
@@ -214,7 +219,7 @@ export class PlaybackEngine {
 
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       try {
-        const duration = await this.engine.loadSong(this.activeDeck, item.song.id, hasStems, bustCache);
+        const duration = await this.engine.loadSong(this.activeDeck, item.song.id, hasStems, cacheVer);
         if (gen !== this.playGeneration) return;
         this.currentDuration = duration;
       } catch (e) {
@@ -522,7 +527,7 @@ export class PlaybackEngine {
     if (this.preloadedItemId === item.id) return;
     try {
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
-      const duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems);
+      const duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems, songCacheVersion(item));
       this.preloadedItemId = item.id;
       this.preloadedItem = item;
       this.preloadedDuration = duration;

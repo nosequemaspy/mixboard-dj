@@ -197,7 +197,7 @@ export function getEffectivePlaybackSettings(item: SessionItem): {
   const ps = item.song.playback_settings;
   return {
     start_time: item.start_time ?? ps?.start_time ?? 0,
-    end_time: item.end_time ?? ps?.end_time ?? null,
+    end_time: item.end_time || ps?.end_time || null,
     transition_duration: item.transition_duration ?? ps?.transition_duration ?? 4,
     transition_type: item.transition_type ?? ps?.transition_type ?? 'smooth',
     playback_speed: item.playback_speed ?? ps?.playback_speed ?? 1.0,

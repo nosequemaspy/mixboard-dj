@@ -851,8 +851,8 @@ export function SessionSongEditor() {
       const newDuration = song.duration_seconds - totalCutDuration;
 
       await api.updateSessionItem(sessionId, currentItem.id, {
-        start_time: adjStartTime > 0.5 ? adjStartTime : 0.0,
-        end_time: adjEndTime >= newDuration - 0.5 ? 0.0 : adjEndTime,
+        start_time: adjStartTime > 0.5 ? adjStartTime : null,
+        end_time: adjEndTime >= newDuration - 0.5 ? null : adjEndTime,
         transition_duration: transitionDuration,
         transition_type: transitionType,
         playback_speed: playbackSpeed,
@@ -868,6 +868,7 @@ export function SessionSongEditor() {
       if (cutSections.length > 0) {
         // Audio file changed: invalidate so next play reloads from server
         getPlaybackEngine().invalidateCurrentSong();
+        usePlayerStore.getState().setCurrentTime(0);
         usePlayerStore.getState().setIsPlaying(false);
       } else {
         // No cuts, just update config for mutes/transitions
