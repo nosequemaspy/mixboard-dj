@@ -564,6 +564,19 @@ export class PlaybackEngine {
     this.editorCutSections = sections;
   }
 
+  /** Invalidate the current song (after physical audio edit).
+   *  Stops playback and clears state so next play reloads from server. */
+  invalidateCurrentSong() {
+    this.engine.stop(this.activeDeck);
+    this.stopMonitor();
+    this.cancelTransition();
+    this.currentItem = null;
+    this.currentConfig = null;
+    this.currentDuration = 0;
+    this.editorCutSections = null;
+    this.clearPreload();
+  }
+
   private cancelTransition() {
     this.isTransitioning = false;
     if (this.crossfadeAnimId) {

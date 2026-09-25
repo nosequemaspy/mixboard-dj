@@ -193,28 +193,15 @@ export function SessionSongEditor() {
   const updatingFromRegion = useRef(false);
   const muteStartMarkRef = useRef<number | null>(null);
   const cutStartMarkRef = useRef<number | null>(null);
-  const existingCutSectionsRef = useRef<MuteSection[]>(existingCutSections);
 
   const mutedCount = clips.filter(c => c.status === 'mute').length;
   const cutCount = clips.filter(c => c.status === 'cut').length;
-
-  // Helper: check if a clip matches a saved cut section
-  const isSavedCut = useCallback((clip: Clip) => {
-    if (clip.status !== 'cut') return false;
-    return existingCutSections.some(s =>
-      Math.abs(s.start - clip.start) < 0.5 && Math.abs(s.end - clip.end) < 0.5
-    );
-  }, [existingCutSections]);
-
-  const savedCutCount = clips.filter(c => isSavedCut(c)).length;
-  const pendingCutCount = cutCount - savedCutCount;
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { playerTimeRef.current = playerCurrentTime; }, [playerCurrentTime]);
   useEffect(() => { startTimeRef.current = startTime; }, [startTime]);
   useEffect(() => { endTimeRef.current = endTime; }, [endTime]);
   useEffect(() => { transitionDurationRef.current = transitionDuration; }, [transitionDuration]);
-  useEffect(() => { existingCutSectionsRef.current = existingCutSections; }, [existingCutSections]);
   useEffect(() => { muteStartMarkRef.current = muteStartMark; }, [muteStartMark]);
   useEffect(() => { cutStartMarkRef.current = cutStartMark; }, [cutStartMark]);
 
@@ -646,15 +633,9 @@ export function SessionSongEditor() {
       if (c.status === 'mute') addOverlay(c.start, c.end, 'rgba(168,85,247,0.25)');
     });
 
-    // Cut overlays: saved = dark (applied), pending = red
-    const savedCuts = existingCutSectionsRef.current;
+    // Cut overlays (red)
     clipsRef.current.forEach(c => {
-      if (c.status === 'cut') {
-        const saved = savedCuts.some(s =>
-          Math.abs(s.start - c.start) < 0.5 && Math.abs(s.end - c.end) < 0.5
-        );
-        addOverlay(c.start, c.end, saved ? 'rgba(0,0,0,0.55)' : 'rgba(239,68,68,0.25)');
-      }
+      if (c.status === 'cut') addOverlay(c.start, c.end, 'rgba(239,68,68,0.25)');
     });
 
     // Split lines
@@ -811,40 +792,86 @@ export function SessionSongEditor() {
       const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
       if (!sessionId) return;
 
-      const muteSectionsData: MuteSection[] = clips
-        .filter(c => c.status === 'mute')
-        .map(c => ({ start: c.start, end: c.end }));
-
-      const cutSectionsData: MuteSection[] = clips
+      const cutSections = clips
         .filter(c => c.status === 'cut')
         .map(c => ({ start: c.start, end: c.end }));
 
-      // Save cut sections as metadata on the Song (non-destructive, shared across all sessions)
-      // PlaybackEngine already skips cut sections in real-time during playback
-      await api.updateSong(song.id, {
-        cut_sections: cutSectionsData.length > 0 ? JSON.stringify(cutSectionsData) : '',
-      });
+      const muteSections = clips
+        .filter(c => c.status === 'mute')
+        .map(c => ({ start: c.start, end: c.end }));
 
-      // Save per-session settings (transitions, mute, speed)
+      // --- Physically cut sections from the audio file (permanent, via ffmpeg) ---
+      if (cutSections.length > 0) {
+        await api.createEdit({
+          song_id: song.id,
+          name: song.title,
+          edit_type: 'cut_section',
+          params: { sections: cutSections },
+        });
+
+        // Clear any metadata cut_sections (now physically removed)
+        await api.updateSong(song.id, { cut_sections: '' });
+      }
+
+      // --- Adjust timestamps for shorter audio after cuts ---
+      let adjStartTime = startTime;
+      let adjEndTime = endTime;
+      let adjMuteSections = muteSections;
+
+      if (cutSections.length > 0) {
+        const sortedCuts = [...cutSections].sort((a, b) => a.start - b.start);
+
+        const adjustTime = (time: number): number => {
+          let shift = 0;
+          for (const cut of sortedCuts) {
+            if (time <= cut.start) break;
+            if (time >= cut.end) {
+              shift += cut.end - cut.start;
+            } else {
+              // Time falls inside a cut — clamp to cut start
+              return cut.start - shift;
+            }
+          }
+          return Math.max(0, time - shift);
+        };
+
+        adjStartTime = adjustTime(startTime);
+        adjEndTime = adjustTime(endTime);
+        adjMuteSections = muteSections
+          .map(m => ({ start: adjustTime(m.start), end: adjustTime(m.end) }))
+          .filter(m => m.end > m.start + 0.1);
+      }
+
+      // --- Save per-session settings (with adjusted times if cuts were made) ---
+      const totalCutDuration = cutSections.reduce((sum, c) => sum + (c.end - c.start), 0);
+      const newDuration = song.duration_seconds - totalCutDuration;
+
       await api.updateSessionItem(sessionId, currentItem.id, {
-        start_time: startTime > 0.5 ? startTime : 0.0,
-        end_time: endTime >= song.duration_seconds - 0.5 ? 0.0 : endTime,
+        start_time: adjStartTime > 0.5 ? adjStartTime : 0.0,
+        end_time: adjEndTime >= newDuration - 0.5 ? 0.0 : adjEndTime,
         transition_duration: transitionDuration,
         transition_type: transitionType,
         playback_speed: playbackSpeed,
-        mute_sections: muteSectionsData.length > 0 ? JSON.stringify(muteSectionsData) : '',
+        mute_sections: adjMuteSections.length > 0 ? JSON.stringify(adjMuteSections) : '',
       }, password);
 
-      // Refresh both stores
+      // --- Refresh stores ---
       await useLibraryStore.getState().fetchSongs();
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
 
-      // Update PlaybackEngine config for the current item (so cuts/mutes take effect immediately)
-      const updatedItems = usePlayerStore.getState().sessionItems;
-      const updatedItem = updatedItems.find(i => i.id === currentItem.id);
-      if (updatedItem) {
-        getPlaybackEngine().refreshCurrentConfig(updatedItem);
+      // --- Reload PlaybackEngine ---
+      if (cutSections.length > 0) {
+        // Audio file changed: invalidate so next play reloads from server
+        getPlaybackEngine().invalidateCurrentSong();
+        usePlayerStore.getState().setIsPlaying(false);
+      } else {
+        // No cuts, just update config for mutes/transitions
+        const updatedItems = usePlayerStore.getState().sessionItems;
+        const updatedItem = updatedItems.find(i => i.id === currentItem.id);
+        if (updatedItem) {
+          getPlaybackEngine().refreshCurrentConfig(updatedItem);
+        }
       }
 
       // Reload editor: force WaveSurfer + clips re-init from saved data
@@ -1090,8 +1117,7 @@ export function SessionSongEditor() {
         {(mutedCount > 0 || cutCount > 0) && (
           <span className="ml-auto text-[10px] font-mono flex gap-2">
             {mutedCount > 0 && <span className="text-warning">{mutedCount} mute{mutedCount > 1 ? 's' : ''}</span>}
-            {savedCutCount > 0 && <span className="text-zinc-400">{savedCutCount} aplicado{savedCutCount > 1 ? 's' : ''}</span>}
-            {pendingCutCount > 0 && <span className="text-danger">{pendingCutCount} corte{pendingCutCount > 1 ? 's' : ''}</span>}
+            {cutCount > 0 && <span className="text-danger">{cutCount} corte{cutCount > 1 ? 's' : ''}</span>}
           </span>
         )}
       </div>
@@ -1173,16 +1199,13 @@ export function SessionSongEditor() {
             const pct = ((clip.end - clip.start) / displayDuration) * 100;
             const isSelected = clip.id === selectedClipId;
             const isNarrow = pct < 8;
-            const saved = isSavedCut(clip);
             return (
               <div key={clip.id}
                 onClick={() => { setSelectedClipId(clip.id); seekToTime(clip.start + 0.01); }}
                 style={{ width: `${pct}%`, minWidth: '3px' }}
                 className={`h-full border-l flex items-center cursor-pointer transition-all overflow-hidden select-none
                   ${clip.status === 'cut'
-                    ? saved
-                      ? 'border-l-zinc-600/40 bg-zinc-900/40 text-zinc-500/40'
-                      : 'border-l-danger/60 bg-danger/10 text-danger/60'
+                    ? 'border-l-danger/60 bg-danger/10 text-danger/60'
                     : clip.status === 'mute'
                     ? 'border-l-warning/60 bg-warning/10 text-warning/60'
                     : 'border-l-accent/20 bg-accent/5 text-text-muted/40'}
@@ -1191,7 +1214,7 @@ export function SessionSongEditor() {
               >
                 {!isNarrow && (
                   <span className="text-[8px] font-mono truncate px-1">
-                    {clip.status === 'cut' ? (saved ? '━ ' : '✕ ') : clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
+                    {clip.status === 'cut' ? '✕ ' : clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
                   </span>
                 )}
               </div>
