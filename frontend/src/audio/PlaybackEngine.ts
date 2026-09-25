@@ -52,6 +52,7 @@ export class PlaybackEngine {
   private currentConfig: SongPlaybackConfig | null = null;
   private currentDuration = 0;
   private editorCutSections: MuteSection[] | null = null;
+  private bustCacheOnNextLoad = false;
 
   constructor(engine: AudioEngine) {
     this.engine = engine;
@@ -164,6 +165,8 @@ export class PlaybackEngine {
     // Case 3: Not preloaded — load fresh
     const gen = ++this.playGeneration;
     const wasPlaying = !this.isTransitioning && this.engine.isPlaying(this.activeDeck);
+    const bustCache = this.bustCacheOnNextLoad;
+    this.bustCacheOnNextLoad = false;
 
     // Cancel any ongoing transition
     this.cancelTransition();
@@ -176,7 +179,7 @@ export class PlaybackEngine {
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       let duration: number;
       try {
-        duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems);
+        duration = await this.engine.loadSong(this.preloadDeck, item.song.id, hasStems, bustCache);
         if (gen !== this.playGeneration) return;
       } catch (e) {
         if (gen !== this.playGeneration) return;
@@ -208,7 +211,7 @@ export class PlaybackEngine {
 
       const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
       try {
-        const duration = await this.engine.loadSong(this.activeDeck, item.song.id, hasStems);
+        const duration = await this.engine.loadSong(this.activeDeck, item.song.id, hasStems, bustCache);
         if (gen !== this.playGeneration) return;
         this.currentDuration = duration;
       } catch (e) {
@@ -565,16 +568,17 @@ export class PlaybackEngine {
   }
 
   /** Invalidate the current song (after physical audio edit).
-   *  Stops playback and clears state so next play reloads from server. */
+   *  Stops both decks and clears all state so next play reloads fresh audio. */
   invalidateCurrentSong() {
-    this.engine.stop(this.activeDeck);
+    this.stop(); // stops both decks, cancels transition, clears state
     this.stopMonitor();
-    this.cancelTransition();
-    this.currentItem = null;
-    this.currentConfig = null;
-    this.currentDuration = 0;
     this.editorCutSections = null;
-    this.clearPreload();
+    this.bustCacheOnNextLoad = true;
+  }
+
+  /** Whether the engine has a loaded song. */
+  hasCurrentItem(): boolean {
+    return this.currentItem !== null;
   }
 
   private cancelTransition() {

@@ -60,7 +60,17 @@ export function usePlaybackEngine() {
       // Handle play/pause toggle
       if (state.isPlaying !== prevState.isPlaying && state.currentItemId === prevState.currentItemId) {
         if (state.isPlaying) {
-          engine.resume();
+          if (engine.hasCurrentItem()) {
+            engine.resume();
+          } else if (state.currentItemId) {
+            // Engine was invalidated (e.g., after audio edit) — reload fresh
+            const item = state.sessionItems.find(i => i.id === state.currentItemId);
+            if (item) {
+              state.setTransitionState(true, item.song.title);
+              const nextItem = state.getNextItem();
+              engine.playSong(item, nextItem);
+            }
+          }
         } else {
           engine.pause();
         }

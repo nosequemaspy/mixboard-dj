@@ -486,23 +486,27 @@ export function SessionSongEditor() {
       // No inline peaks — fetch from single-song API (lightweight, returns peaks without downloading audio)
       // Falls back to audio blob if API doesn't have peaks either
       const loadPeaksOrBlob = async () => {
-        // First try: fetch peaks from GET /api/songs/{id} (small JSON, ~5KB)
+        // First try: fetch peaks from GET /api/songs/{id} (bust cache to get fresh data after edits)
         try {
           if (cancelled) return;
-          const fullSong = await api.getSong(song.id);
+          const res = await fetch(`/api/songs/${song.id}?t=${Date.now()}`, {
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (cancelled) return;
+          const fullSong = await res.json();
           if (cancelled) return;
           if (fullSong.waveform_peaks) {
             const peaks: number[] = JSON.parse(fullSong.waveform_peaks);
             if (peaks.length > 0) {
-              ws.load('', [peaks], song.duration_seconds);
-              setWsDuration(song.duration_seconds);
+              ws.load('', [peaks], fullSong.duration_seconds);
+              setWsDuration(fullSong.duration_seconds);
               setIsLoading(false);
               return;
             }
           }
         } catch { /* API failed, fall through to blob */ }
 
-        // Fallback: fetch audio blob with retry
+        // Fallback: fetch audio blob with retry (bust cache for fresh audio after edits)
         ws.on('error', (err: any) => {
           console.error('WaveSurfer error:', err);
           setIsLoading(false);
@@ -511,7 +515,7 @@ export function SessionSongEditor() {
         for (let attempt = 0; attempt <= 2; attempt++) {
           try {
             if (cancelled) return;
-            const response = await fetch(api.streamUrl(song.id));
+            const response = await fetch(api.streamUrl(song.id) + `?t=${Date.now()}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             if (cancelled) return;
             const blob = await response.blob();

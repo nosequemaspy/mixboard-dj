@@ -227,7 +227,7 @@ export class AudioEngine {
     this.animFrameId = requestAnimationFrame(update);
   }
 
-  async loadSong(deckId: DeckId, songId: number, hasStems: boolean) {
+  async loadSong(deckId: DeckId, songId: number, hasStems: boolean, bustCache = false) {
     const deck = this.decks.get(deckId)!;
 
     // Stop and clear BEFORE any awaits to prevent the RAF time-update loop
@@ -245,7 +245,8 @@ export class AudioEngine {
     const gen = ++deck.loadGeneration;
 
     // Load original audio only — return fast so deck is usable immediately
-    const origResponse = await fetch(api.streamUrl(songId));
+    const streamUrl = api.streamUrl(songId) + (bustCache ? `?t=${Date.now()}` : '');
+    const origResponse = await fetch(streamUrl);
     if (deck.loadGeneration !== gen) return 0;
     if (!origResponse.ok) throw new Error(`Original fetch failed: HTTP ${origResponse.status}`);
     const origData = await origResponse.arrayBuffer();
