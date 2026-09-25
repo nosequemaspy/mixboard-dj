@@ -51,6 +51,7 @@ export class PlaybackEngine {
   private currentItem: SessionItem | null = null;
   private currentConfig: SongPlaybackConfig | null = null;
   private currentDuration = 0;
+  private editorCutSections: MuteSection[] | null = null;
 
   constructor(engine: AudioEngine) {
     this.engine = engine;
@@ -104,9 +105,10 @@ export class PlaybackEngine {
 
         const config = this.currentConfig!;
 
-        // Auto-seek past cut sections
-        if (config.cutSections.length > 0) {
-          const cutSection = config.cutSections.find(s => time >= s.start && time < s.end);
+        // Auto-seek past cut sections (editor overrides take priority)
+        const cutSects = this.editorCutSections ?? config.cutSections;
+        if (cutSects.length > 0) {
+          const cutSection = cutSects.find(s => time >= s.start && time < s.end);
           if (cutSection) {
             this.engine.seek(this.activeDeck, cutSection.end);
             return;
@@ -554,6 +556,12 @@ export class PlaybackEngine {
       this.currentConfig = getPlaybackConfig(updatedItem);
       this.applyDeckConfig(this.activeDeck, updatedItem);
     }
+  }
+
+  /** Set temporary cut sections from the editor for real-time preview.
+   *  Pass null to clear and fall back to saved cut sections. */
+  setEditorCutSections(sections: MuteSection[] | null) {
+    this.editorCutSections = sections;
   }
 
   private cancelTransition() {

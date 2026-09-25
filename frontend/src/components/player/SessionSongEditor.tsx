@@ -193,15 +193,28 @@ export function SessionSongEditor() {
   const updatingFromRegion = useRef(false);
   const muteStartMarkRef = useRef<number | null>(null);
   const cutStartMarkRef = useRef<number | null>(null);
+  const existingCutSectionsRef = useRef<MuteSection[]>(existingCutSections);
 
   const mutedCount = clips.filter(c => c.status === 'mute').length;
   const cutCount = clips.filter(c => c.status === 'cut').length;
+
+  // Helper: check if a clip matches a saved cut section
+  const isSavedCut = useCallback((clip: Clip) => {
+    if (clip.status !== 'cut') return false;
+    return existingCutSections.some(s =>
+      Math.abs(s.start - clip.start) < 0.5 && Math.abs(s.end - clip.end) < 0.5
+    );
+  }, [existingCutSections]);
+
+  const savedCutCount = clips.filter(c => isSavedCut(c)).length;
+  const pendingCutCount = cutCount - savedCutCount;
 
   useEffect(() => { clipsRef.current = clips; }, [clips]);
   useEffect(() => { playerTimeRef.current = playerCurrentTime; }, [playerCurrentTime]);
   useEffect(() => { startTimeRef.current = startTime; }, [startTime]);
   useEffect(() => { endTimeRef.current = endTime; }, [endTime]);
   useEffect(() => { transitionDurationRef.current = transitionDuration; }, [transitionDuration]);
+  useEffect(() => { existingCutSectionsRef.current = existingCutSections; }, [existingCutSections]);
   useEffect(() => { muteStartMarkRef.current = muteStartMark; }, [muteStartMark]);
   useEffect(() => { cutStartMarkRef.current = cutStartMark; }, [cutStartMark]);
 
@@ -633,9 +646,15 @@ export function SessionSongEditor() {
       if (c.status === 'mute') addOverlay(c.start, c.end, 'rgba(168,85,247,0.25)');
     });
 
-    // Cut overlays (red)
+    // Cut overlays: saved = dark (applied), pending = red
+    const savedCuts = existingCutSectionsRef.current;
     clipsRef.current.forEach(c => {
-      if (c.status === 'cut') addOverlay(c.start, c.end, 'rgba(239,68,68,0.25)');
+      if (c.status === 'cut') {
+        const saved = savedCuts.some(s =>
+          Math.abs(s.start - c.start) < 0.5 && Math.abs(s.end - c.end) < 0.5
+        );
+        addOverlay(c.start, c.end, saved ? 'rgba(0,0,0,0.55)' : 'rgba(239,68,68,0.25)');
+      }
     });
 
     // Split lines
@@ -736,6 +755,24 @@ export function SessionSongEditor() {
   useEffect(() => {
     drawRegions();
   }, [startTime, endTime, transitionDuration, clips, muteStartMark, cutStartMark, drawRegions]);
+
+  // --- Sync editor cut sections to PlaybackEngine for real-time preview ---
+
+  useEffect(() => {
+    const pendingCuts = clips
+      .filter(c => c.status === 'cut')
+      .filter(c => !existingCutSections.some(s =>
+        Math.abs(s.start - c.start) < 0.5 && Math.abs(s.end - c.end) < 0.5
+      ))
+      .map(c => ({ start: c.start, end: c.end }));
+    const allCuts = [...existingCutSections, ...pendingCuts];
+    getPlaybackEngine().setEditorCutSections(allCuts.length > 0 ? allCuts : null);
+  }, [clips, existingCutSections]);
+
+  // Clear editor cuts from PlaybackEngine when editor unmounts
+  useEffect(() => {
+    return () => { getPlaybackEngine().setEditorCutSections(null); };
+  }, []);
 
   // --- Handlers ---
 
@@ -1053,7 +1090,8 @@ export function SessionSongEditor() {
         {(mutedCount > 0 || cutCount > 0) && (
           <span className="ml-auto text-[10px] font-mono flex gap-2">
             {mutedCount > 0 && <span className="text-warning">{mutedCount} mute{mutedCount > 1 ? 's' : ''}</span>}
-            {cutCount > 0 && <span className="text-danger">{cutCount} cut{cutCount > 1 ? 's' : ''}</span>}
+            {savedCutCount > 0 && <span className="text-zinc-400">{savedCutCount} aplicado{savedCutCount > 1 ? 's' : ''}</span>}
+            {pendingCutCount > 0 && <span className="text-danger">{pendingCutCount} corte{pendingCutCount > 1 ? 's' : ''}</span>}
           </span>
         )}
       </div>
@@ -1135,13 +1173,16 @@ export function SessionSongEditor() {
             const pct = ((clip.end - clip.start) / displayDuration) * 100;
             const isSelected = clip.id === selectedClipId;
             const isNarrow = pct < 8;
+            const saved = isSavedCut(clip);
             return (
               <div key={clip.id}
                 onClick={() => { setSelectedClipId(clip.id); seekToTime(clip.start + 0.01); }}
                 style={{ width: `${pct}%`, minWidth: '3px' }}
                 className={`h-full border-l flex items-center cursor-pointer transition-all overflow-hidden select-none
                   ${clip.status === 'cut'
-                    ? 'border-l-danger/60 bg-danger/10 text-danger/60'
+                    ? saved
+                      ? 'border-l-zinc-600/40 bg-zinc-900/40 text-zinc-500/40'
+                      : 'border-l-danger/60 bg-danger/10 text-danger/60'
                     : clip.status === 'mute'
                     ? 'border-l-warning/60 bg-warning/10 text-warning/60'
                     : 'border-l-accent/20 bg-accent/5 text-text-muted/40'}
@@ -1150,7 +1191,7 @@ export function SessionSongEditor() {
               >
                 {!isNarrow && (
                   <span className="text-[8px] font-mono truncate px-1">
-                    {clip.status === 'cut' ? '✕ ' : clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
+                    {clip.status === 'cut' ? (saved ? '━ ' : '✕ ') : clip.status === 'mute' ? '♪ ' : ''}{fmt(clip.start)}
                   </span>
                 )}
               </div>
