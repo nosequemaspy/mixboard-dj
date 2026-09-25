@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog';
 import type { SessionItem, SessionFolder } from '../../types';
 import { getEffectivePlaybackSettings, matchesSearch } from '../../types';
 import { api } from '../../api/http';
+import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -109,7 +110,7 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
   );
 }
 
-function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, onPlay, onAddToQueue, onAssignFolder }: {
+function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onAssignFolder, onMoveUp, onMoveDown, onMoveToPosition, onRemove }: {
   item: SessionItem;
   isPlayed: boolean;
   isCurrent: boolean;
@@ -117,9 +118,16 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   songIndex: number;
   folders: SessionFolder[];
   restrictedMode: boolean;
+  totalItems: number;
+  isFirst: boolean;
+  isLast: boolean;
   onPlay: (item: SessionItem) => void;
   onAddToQueue: (item: SessionItem) => void;
   onAssignFolder: (itemId: number, folderId: number | null) => void;
+  onMoveUp: (itemId: number) => void;
+  onMoveDown: (itemId: number) => void;
+  onMoveToPosition: (itemId: number, pos: number) => void;
+  onRemove: (itemId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
   const style = {
@@ -127,10 +135,33 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
     transition,
   };
 
+  const [posMenuOpen, setPosMenuOpen] = useState(false);
+  const [posInput, setPosInput] = useState('');
+  const posMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!posMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (posMenuRef.current && !posMenuRef.current.contains(e.target as Node)) setPosMenuOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [posMenuOpen]);
+
+  const submitPosMove = () => {
+    const val = parseInt(posInput, 10);
+    if (!isNaN(val) && val >= 1 && val <= totalItems) {
+      onMoveToPosition(item.id, val);
+      setPosMenuOpen(false);
+    }
+  };
+
+  const displayPos = songIndex + 1;
+
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        className={`flex items-center gap-1.5 px-2 py-2 transition-colors overflow-hidden ${
+        className={`flex items-center gap-1.5 px-2 py-2 transition-colors overflow-hidden group/row ${
           isCurrent
             ? 'bg-accent/10'
             : isNext
@@ -149,22 +180,114 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
           </div>
         )}
 
-        {/* Index / playing indicator */}
-        <div className="w-7 text-center flex-shrink-0">
-          {isCurrent ? (
-            <span className="text-accent text-sm font-bold">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="inline">
-                <path d="M8 5v14l11-7z" />
+        {/* Up/Down arrows — only in editable mode */}
+        {!restrictedMode && (
+          <div className="flex flex-col gap-0 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
+            <button
+              onClick={() => onMoveUp(item.id)}
+              disabled={isFirst}
+              className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
+              title="Mover arriba"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                <path d="M4 10l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-            </span>
-          ) : isNext ? (
-            <span className="text-accent/60 text-[10px] font-bold uppercase">SIG</span>
-          ) : (
-            <span className={`text-xs font-mono ${isPlayed ? 'text-text-muted/40' : 'text-text-muted'}`}>
-              {songIndex + 1}
-            </span>
-          )}
-        </div>
+            </button>
+            <button
+              onClick={() => onMoveDown(item.id)}
+              disabled={isLast}
+              className="text-text-muted hover:text-text-primary disabled:opacity-20 disabled:cursor-default transition-colors p-0 leading-none"
+              title="Mover abajo"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Position indicator — clickable in edit mode */}
+        {!restrictedMode ? (
+          <div className="relative w-7 text-center flex-shrink-0" ref={posMenuRef}>
+            <button
+              onClick={() => { setPosInput(String(displayPos)); setPosMenuOpen(!posMenuOpen); }}
+              className="text-xs text-text-muted hover:text-accent w-full tabular-nums transition-colors"
+              title="Mover a posicion..."
+            >
+              {isCurrent ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="inline text-accent">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              ) : isNext ? (
+                <span className="text-accent/60 text-[10px] font-bold uppercase">SIG</span>
+              ) : displayPos}
+            </button>
+            {posMenuOpen && (
+              <div
+                className="absolute left-0 top-full mt-1 z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[180px]"
+                onClick={e => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => { onMoveToPosition(item.id, 1); setPosMenuOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 3h8M8 7v6M5 10l3-3 3 3"/>
+                  </svg>
+                  Mover al primer lugar
+                </button>
+                <button
+                  onClick={() => { onMoveToPosition(item.id, totalItems); setPosMenuOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 13h8M8 3v6M5 6l3 3 3-3"/>
+                  </svg>
+                  Mover al ultimo lugar
+                </button>
+                <div className="mx-2 my-1 border-t border-border/30" />
+                <div className="px-3 py-2">
+                  <label className="text-[10px] text-text-muted mb-1.5 block">Mover a posicion:</label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalItems}
+                      value={posInput}
+                      onChange={e => setPosInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') submitPosMove(); if (e.key === 'Escape') setPosMenuOpen(false); }}
+                      autoFocus
+                      className="flex-1 w-0 bg-bg-primary border border-border/60 rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent/60 tabular-nums"
+                      placeholder="Ej: 45"
+                    />
+                    <button
+                      onClick={submitPosMove}
+                      className="text-xs px-3 py-1.5 rounded bg-accent/20 text-accent hover:bg-accent/30 transition-colors font-medium"
+                    >
+                      Ir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="w-7 text-center flex-shrink-0">
+            {isCurrent ? (
+              <span className="text-accent text-sm font-bold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="inline">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+            ) : isNext ? (
+              <span className="text-accent/60 text-[10px] font-bold uppercase">SIG</span>
+            ) : (
+              <span className={`text-xs font-mono ${isPlayed ? 'text-text-muted/40' : 'text-text-muted'}`}>
+                {displayPos}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Song info — tappable to play */}
         <button
@@ -206,6 +329,20 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
+
+        {/* Delete button — only in editable mode */}
+        {!restrictedMode && (
+          <button
+            onClick={() => onRemove(item.id)}
+            className="p-1.5 text-text-muted/40 hover:text-danger transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center flex-shrink-0 sm:opacity-0 sm:group-hover/row:opacity-100"
+            title="Eliminar de la sesion"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="4" y1="4" x2="12" y2="12" />
+              <line x1="12" y1="4" x2="4" y2="12" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -306,6 +443,7 @@ export function PlayerPlaylist() {
   };
 
   const handlePlayItem = (item: SessionItem) => {
+    if (item.id === currentItemId) return;
     if (restrictedMode) {
       setConfirmAction({
         title: 'Reproducir cancion',
@@ -384,6 +522,86 @@ export function PlayerPlaylist() {
       } else {
         await api.reorderSessionItems(sessionId, itemIds, getPassword());
       }
+      await refreshSession();
+    } catch { /* ignore */ }
+  };
+
+  const getSongItems = () =>
+    displayItems.filter(e => e.type === 'song').map(e => (e as { type: 'song'; item: SessionItem }).item);
+
+  const handleMoveUp = async (itemId: number) => {
+    if (!sessionId || search) return;
+    const songItems = getSongItems();
+    const idx = songItems.findIndex(i => i.id === itemId);
+    if (idx <= 0) return;
+    const reordered = arrayMove(songItems, idx, idx - 1);
+    const itemIds = reordered.map(i => i.id);
+    try {
+      if (activeTagId !== null) {
+        await api.reorderFolderItems(sessionId, activeTagId, itemIds, getPassword());
+      } else {
+        await api.reorderSessionItems(sessionId, itemIds, getPassword());
+      }
+      await refreshSession();
+    } catch { /* ignore */ }
+  };
+
+  const handleMoveDown = async (itemId: number) => {
+    if (!sessionId || search) return;
+    const songItems = getSongItems();
+    const idx = songItems.findIndex(i => i.id === itemId);
+    if (idx < 0 || idx >= songItems.length - 1) return;
+    const reordered = arrayMove(songItems, idx, idx + 1);
+    const itemIds = reordered.map(i => i.id);
+    try {
+      if (activeTagId !== null) {
+        await api.reorderFolderItems(sessionId, activeTagId, itemIds, getPassword());
+      } else {
+        await api.reorderSessionItems(sessionId, itemIds, getPassword());
+      }
+      await refreshSession();
+    } catch { /* ignore */ }
+  };
+
+  const handleMoveToPosition = async (itemId: number, targetPos: number) => {
+    if (!sessionId || search) return;
+    const songItems = getSongItems();
+    const idx = songItems.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const targetIndex = Math.max(0, Math.min(targetPos - 1, songItems.length - 1));
+    if (targetIndex === idx) return;
+    const reordered = arrayMove(songItems, idx, targetIndex);
+    const itemIds = reordered.map(i => i.id);
+    try {
+      if (activeTagId !== null) {
+        await api.reorderFolderItems(sessionId, activeTagId, itemIds, getPassword());
+      } else {
+        await api.reorderSessionItems(sessionId, itemIds, getPassword());
+      }
+      await refreshSession();
+    } catch { /* ignore */ }
+  };
+
+  const handleRemoveItem = async (itemId: number) => {
+    if (!sessionId) return;
+    // If deleting the currently playing song, play the next one or stop
+    if (itemId === currentItemId) {
+      const nextItem = usePlayerStore.getState().getNextItem();
+      if (nextItem) {
+        usePlayerStore.getState().playItem(nextItem);
+      } else {
+        getPlaybackEngine().stop();
+        usePlayerStore.setState({ currentItemId: null, currentSongId: null, isPlaying: false, currentTime: 0 });
+      }
+    }
+    // Remove from queue if queued
+    const queue = usePlayerStore.getState().queue;
+    const queueIdx = queue.findIndex(q => q.item.id === itemId);
+    if (queueIdx >= 0) {
+      usePlayerStore.getState().removeFromQueue(queueIdx);
+    }
+    try {
+      await api.removeSessionItem(sessionId, itemId, getPassword());
       await refreshSession();
     } catch { /* ignore */ }
   };
@@ -567,9 +785,16 @@ export function PlayerPlaylist() {
                       songIndex={songIndex}
                       folders={folders}
                       restrictedMode={restrictedMode}
+                      totalItems={filteredItems.length}
+                      isFirst={songIndex === 0}
+                      isLast={songIndex === filteredItems.length - 1}
                       onPlay={handlePlayItem}
                       onAddToQueue={handleAddToQueue}
                       onAssignFolder={handleAssignFolder}
+                      onMoveUp={handleMoveUp}
+                      onMoveDown={handleMoveDown}
+                      onMoveToPosition={handleMoveToPosition}
+                      onRemove={handleRemoveItem}
                     />
                   );
                 })}
