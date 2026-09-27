@@ -147,6 +147,7 @@ export class PlaybackEngine {
   async playSong(item: SessionItem, preloadNext?: SessionItem | null) {
     // Case 1: Already playing on active deck (from completed transition) — skip reload
     if (this.currentItem && this.currentItem.id === item.id && this.engine.isPlaying(this.activeDeck)) {
+      this.onSongStart?.(item);
       this.onTransitionChange?.(false, null);
       this.clearPreload();
       if (preloadNext) this.preloadSong(preloadNext);
