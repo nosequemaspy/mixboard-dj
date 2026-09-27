@@ -19,102 +19,14 @@ interface SessionSongListProps {
   folders: SessionFolder[];
   activeFolder: number | null;
   playerActive?: boolean;
+  selectedItemId?: number | null;
+  onSelectItem?: (itemId: number) => void;
 }
 
 function formatDuration(s: number) {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, '0')}`;
-}
-
-function FolderDropdown({ folders, currentFolderIds, onAssign }: {
-  folders: SessionFolder[];
-  currentFolderIds: number[];
-  onAssign: (folderId: number | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [open]);
-
-  const activeFolders = folders.filter(f => currentFolderIds.includes(f.id));
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(!open); }}
-        className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors gap-1 ${
-          activeFolders.length > 0
-            ? 'hover:brightness-125'
-            : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
-        }`}
-        style={activeFolders.length === 1 ? { backgroundColor: `${activeFolders[0].color}25`, color: activeFolders[0].color } : undefined}
-        title="Asignar etiqueta"
-      >
-        {activeFolders.length > 1 ? (
-          <span className="flex items-center gap-0.5">
-            {activeFolders.map(f => (
-              <span key={f.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />
-            ))}
-          </span>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
-          </svg>
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[150px]">
-          <button
-            onClick={() => { onAssign(null); setOpen(false); }}
-            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors ${
-              currentFolderIds.length === 0 ? 'text-accent' : 'text-text-primary'
-            }`}
-          >
-            <span className="ml-[18px]">Sin etiqueta</span>
-          </button>
-          {folders.length > 0 && <div className="mx-2 my-0.5 border-t border-border/30" />}
-          {folders.map(f => {
-            const isChecked = currentFolderIds.includes(f.id);
-            return (
-              <button
-                key={f.id}
-                onClick={() => { onAssign(f.id); }}
-                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                  isChecked ? '' : 'text-text-primary'
-                }`}
-                style={{
-                  color: isChecked ? f.color : undefined,
-                  backgroundColor: isChecked ? `${f.color}10` : undefined,
-                }}
-                onMouseEnter={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = `${f.color}0d`); }}
-                onMouseLeave={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = ''); }}
-              >
-                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
-                  isChecked ? 'border-current' : 'border-text-muted/40'
-                }`} style={isChecked ? { borderColor: f.color, backgroundColor: `${f.color}30` } : undefined}>
-                  {isChecked && (
-                    <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                    </svg>
-                  )}
-                </span>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                {f.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (text: string) => void; onRemove: () => void }) {
@@ -180,7 +92,7 @@ function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (te
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onShowDeckPicker, onMoveUp, onMoveDown, onMoveToPosition, totalItems, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onMoveUp, onMoveDown, onMoveToPosition, totalItems, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue, isTagSelected, onTagSelect }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -190,7 +102,6 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   activeFolder: number | null;
   isSelected: boolean;
   onToggleSelect: (itemId: number) => void;
-  onShowDeckPicker: (item: SessionItem) => void;
   onMoveUp: (itemId: number) => void;
   onMoveDown: (itemId: number) => void;
   onMoveToPosition: (itemId: number, targetPos: number) => void;
@@ -206,6 +117,8 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   restrictedMode?: boolean;
   nextItem?: SessionItem | null;
   isInQueue?: boolean;
+  isTagSelected?: boolean;
+  onTagSelect?: (itemId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
 
@@ -247,11 +160,6 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
     onUpdate();
   };
 
-  const assignFolder = async (folderId: number | null) => {
-    await api.assignItemFolder(sessionId, item.id, folderId, password);
-    onUpdate();
-  };
-
   const itemFolderIds = item.folder_ids ?? [];
   const itemFolders = folders.filter(f => itemFolderIds.includes(f.id));
   const displayPos = activeFolder ? (item.folder_position ?? 0) + 1 : item.position + 1;
@@ -262,10 +170,9 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   };
 
   const handleRowClick = () => {
+    onTagSelect?.(item.id);
     if (playerActive && onPlayItem) {
       onPlayItem(item);
-    } else {
-      onShowDeckPicker(item);
     }
   };
 
@@ -302,7 +209,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
         isCurrent ? 'bg-accent/10 border-l-2 border-l-accent' :
         isSelected ? 'bg-accent/15 border-l-2 border-l-accent' :
         item.is_played && !isNext ? 'opacity-40' : isNext ? 'bg-accent/5 border-l-2 border-l-accent/40' : 'hover:bg-bg-hover'
-      }`}
+      } ${isTagSelected && !isCurrent ? 'ring-1 ring-inset ring-accent/40' : ''}`}
     >
       {/* Selection checkbox - hidden in restricted mode */}
       {!hideEditControls && (
@@ -498,23 +405,18 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
           )}
         </div>
       )}
-      {/* Folder + Separator — always available */}
-      <div className="flex gap-1.5 shrink-0">
-        {folders.length > 0 && (
-          <FolderDropdown folders={folders} currentFolderIds={item.folder_ids ?? []} onAssign={assignFolder} />
-        )}
-        <button
-          onClick={e => { e.stopPropagation(); setSeparator(item.separator_text ? null : 'Separador'); }}
-          className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
-          title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <line x1="3" y1="5" x2="13" y2="5" />
-            <line x1="3" y1="8" x2="13" y2="8" />
-            <line x1="3" y1="11" x2="13" y2="11" />
-          </svg>
-        </button>
-      </div>
+      {/* Separator — always available */}
+      <button
+        onClick={e => { e.stopPropagation(); setSeparator(item.separator_text ? null : 'Separador'); }}
+        className={`text-xs px-2 py-1.5 min-w-[30px] min-h-[30px] flex items-center justify-center rounded transition-colors shrink-0 ${item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'bg-bg-tertiary text-text-muted hover:text-cyan-400'}`}
+        title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <line x1="3" y1="5" x2="13" y2="5" />
+          <line x1="3" y1="8" x2="13" y2="8" />
+          <line x1="3" y1="11" x2="13" y2="11" />
+        </svg>
+      </button>
       {/* Edit controls - hidden in restricted mode */}
       {!hideEditControls && (
         <div className="flex gap-1.5 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
@@ -566,6 +468,8 @@ export function SessionSongList({
   folders,
   activeFolder,
   playerActive,
+  selectedItemId,
+  onSelectItem,
 }: SessionSongListProps) {
   const [search, setSearch] = useState('');
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
@@ -813,7 +717,6 @@ export function SessionSongList({
                 activeFolder={activeFolder}
                 isSelected={selectedItemIds.has(item.id)}
                 onToggleSelect={toggleSelect}
-                onShowDeckPicker={setDeckPickerItem}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
                 onMoveToPosition={handleMoveToPosition}
@@ -829,6 +732,8 @@ export function SessionSongList({
                 restrictedMode={playerActive ? restrictedMode : false}
                 nextItem={filtered[idx + 1] ?? null}
                 isInQueue={playerActive ? queuedSongIds.has(item.song_id) : false}
+                isTagSelected={item.id === selectedItemId}
+                onTagSelect={onSelectItem}
               />
             ))}
           </SortableContext>

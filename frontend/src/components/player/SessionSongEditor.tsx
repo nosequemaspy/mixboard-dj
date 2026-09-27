@@ -167,12 +167,6 @@ export function SessionSongEditor() {
   const [muteStartMark, setMuteStartMark] = useState<number | null>(null);
   const [cutStartMark, setCutStartMark] = useState<number | null>(null);
   const [showStemPrompt, setShowStemPrompt] = useState(false);
-  const [showFolderPicker, setShowFolderPicker] = useState(false);
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderColor, setNewFolderColor] = useState('#6366f1');
-  const folderPickerRef = useRef<HTMLDivElement>(null);
-
   // Stems
   const startStemSeparation = useLibraryStore(s => s.startStemSeparation);
   const stemSeparationStatus = useLibraryStore(s => s.stemSeparationStatus);
@@ -933,58 +927,6 @@ export function SessionSongEditor() {
     setCutStartMark(null);
   };
 
-  // --- Folder picker handlers ---
-
-  const handleAssignFolder = async (folderId: number | null) => {
-    if (!currentItem) return;
-    const sessionId = usePlayerStore.getState().sessionId;
-    const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
-    if (!sessionId) return;
-    try {
-      await api.assignItemFolder(sessionId, currentItem.id, folderId, password);
-      await useSessionStore.getState().fetchActiveSession(sessionId);
-      usePlayerStore.getState().syncFromSessionStore();
-    } catch (err: any) {
-      console.error('Failed to assign folder:', err);
-    }
-    // Only close on "Sin etiqueta" (clear all)
-    if (folderId === null) setShowFolderPicker(false);
-  };
-
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return;
-    const sessionId = usePlayerStore.getState().sessionId;
-    const password = sessionId ? useSessionStore.getState().getPassword(sessionId) : undefined;
-    if (!sessionId) return;
-    try {
-      const folder = await api.createSessionFolder(sessionId, { name: newFolderName.trim(), color: newFolderColor }, password);
-      await api.assignItemFolder(sessionId, currentItem!.id, folder.id, password);
-      await useSessionStore.getState().fetchActiveSession(sessionId);
-      usePlayerStore.getState().syncFromSessionStore();
-    } catch (err: any) {
-      console.error('Failed to create folder:', err);
-    }
-    setCreatingFolder(false);
-    setNewFolderName('');
-    setNewFolderColor('#6366f1');
-    setShowFolderPicker(false);
-  };
-
-  // Close folder picker on click outside
-  useEffect(() => {
-    if (!showFolderPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node)) {
-        setShowFolderPicker(false);
-        setCreatingFolder(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showFolderPicker]);
-
-  const FOLDER_COLORS = ['#6366f1', '#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#ec4899', '#8b5cf6', '#14b8a6'];
-
   const displayDuration = wsDuration > 0 ? wsDuration : (song?.duration_seconds ?? playerDuration);
 
   if (!song || !currentItem) {
@@ -1017,96 +959,19 @@ export function SessionSongEditor() {
 
         <div className="w-px h-4 bg-border/30 shrink-0 hidden sm:block" />
 
-        {/* Folder picker — outside overflow container so dropdown isn't clipped */}
-        <div className="relative shrink-0 hidden sm:block" ref={folderPickerRef}>
-          <button
-            onClick={() => setShowFolderPicker(!showFolderPicker)}
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-bg-hover transition-colors"
-            title={itemFolders.length > 0 ? itemFolders.map(f => f.name).join(', ') : 'Sin etiqueta'}
-          >
-            {itemFolders.length > 0 ? (
-              <span className="flex items-center gap-0.5">
-                {itemFolders.map(f => (
-                  <span key={f.id} className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: f.color }} />
-                ))}
-              </span>
-            ) : (
-              <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: '#4b5563' }} />
-            )}
-            <span className="text-[9px] text-text-muted max-w-[60px] truncate">
-              {itemFolders.length > 0 ? itemFolders.map(f => f.name).join(', ') : 'Etiqueta'}
-            </span>
-          </button>
-          {showFolderPicker && (
-            <div className="absolute top-full left-0 mt-1 w-44 bg-bg-secondary border border-border rounded-lg shadow-xl z-50 py-1">
-              <button
-                onClick={() => { handleAssignFolder(null); }}
-                className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
-                  itemFolders.length === 0 ? 'text-accent font-medium' : 'text-text-secondary'
-                }`}
-              >
-                <span className="w-2.5 h-2.5 rounded-full border border-border/60 bg-bg-tertiary" />
-                Sin etiqueta
-              </button>
-              {folders.map(f => {
-                const isChecked = itemFolderIds.includes(f.id);
-                return (
-                  <button key={f.id}
-                    onClick={() => handleAssignFolder(f.id)}
-                    className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
-                      isChecked ? 'text-accent font-medium' : 'text-text-secondary'
-                    }`}
-                  >
-                    <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
-                      isChecked ? 'border-accent' : 'border-text-muted/40'
-                    }`} style={isChecked ? { borderColor: f.color, backgroundColor: `${f.color}30` } : undefined}>
-                      {isChecked && (
-                        <svg width="8" height="8" viewBox="0 0 16 16" fill={f.color}>
-                          <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                        </svg>
-                      )}
-                    </span>
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                    <span className="truncate">{f.name}</span>
-                  </button>
-                );
-              })}
-              <div className="border-t border-border/40 mt-1 pt-1">
-                {!creatingFolder ? (
-                  <button
-                    onClick={() => setCreatingFolder(true)}
-                    className="w-full text-left px-2.5 py-1.5 text-[11px] text-accent hover:bg-bg-hover transition-colors"
-                  >+ Crear etiqueta...</button>
-                ) : (
-                  <div className="px-2 py-1.5 flex flex-col gap-1.5">
-                    <input
-                      autoFocus
-                      value={newFolderName}
-                      onChange={e => setNewFolderName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setCreatingFolder(false); }}
-                      placeholder="Nombre..."
-                      className="w-full bg-bg-primary border border-border/50 rounded px-1.5 py-1 text-[11px] text-text-primary focus:outline-none focus:border-accent/60"
-                    />
-                    <div className="flex items-center gap-1">
-                      {FOLDER_COLORS.map(c => (
-                        <button key={c} onClick={() => setNewFolderColor(c)}
-                          className={`w-4 h-4 rounded-full transition-all ${newFolderColor === c ? 'ring-2 ring-white/60 scale-110' : 'hover:scale-110'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                    <div className="flex gap-1">
-                      <button onClick={() => setCreatingFolder(false)}
-                        className="flex-1 text-[10px] text-text-muted hover:text-text-primary py-0.5">Cancelar</button>
-                      <button onClick={handleCreateFolder}
-                        className="flex-1 text-[10px] bg-accent text-white rounded py-0.5 hover:bg-accent-hover font-medium">Crear</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Tag dots */}
+        {itemFolders.length > 0 && (
+          <span className="flex items-center gap-0.5 shrink-0 hidden sm:flex">
+            {itemFolders.map(f => (
+              <span
+                key={f.id}
+                className="w-2.5 h-2.5 rounded-full border border-white/20"
+                style={{ backgroundColor: f.color }}
+                title={f.name}
+              />
+            ))}
+          </span>
+        )}
 
         <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
           <span className="text-[11px] text-text-primary font-medium truncate">{song.title}</span>

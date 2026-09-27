@@ -137,12 +137,28 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
 
   const playerActive = usePlayerStore(s => s.sessionPlayerActive);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
+  const currentItemId = usePlayerStore(s => s.currentItemId);
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, []);
+
+  // Sync selected item from player's current song
+  useEffect(() => {
+    if (playerActive && currentItemId) {
+      setSelectedItemId(currentItemId);
+    }
+  }, [playerActive, currentItemId]);
+
+  const selectedItem = useMemo(() => {
+    if (!selectedItemId) return null;
+    const item = session.items.find(i => i.id === selectedItemId);
+    if (!item) return null;
+    return { id: item.id, songTitle: item.song.title, folderIds: item.folder_ids ?? [] };
+  }, [selectedItemId, session.items]);
 
   // When player mode is toggled on, sync the session into PlayerStore
   useEffect(() => {
@@ -163,8 +179,8 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
   const folderItemCounts = useMemo(() => {
     const counts: Record<number, number> = {};
     for (const item of session.items) {
-      if (item.folder_id) {
-        counts[item.folder_id] = (counts[item.folder_id] || 0) + 1;
+      for (const fid of (item.folder_ids ?? [])) {
+        counts[fid] = (counts[fid] || 0) + 1;
       }
     }
     return counts;
@@ -226,6 +242,11 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
     } catch {
       // ignore
     }
+  };
+
+  const handleAssignTag = async (itemId: number, folderId: number) => {
+    await api.assignItemFolder(session.id, itemId, folderId, password);
+    onUpdate();
   };
 
   const handleTogglePlayer = () => {
@@ -377,6 +398,8 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
               onCreate={handleCreateFolder}
               onDelete={handleDeleteFolder}
               onRename={handleRenameFolder}
+              selectedItem={selectedItem}
+              onAssignTag={handleAssignTag}
             />
             {/* Song list */}
             <div className="flex-1 min-w-0">
@@ -388,6 +411,8 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
                 folders={folders}
                 activeFolder={activeFolder}
                 playerActive={playerActive}
+                selectedItemId={selectedItemId}
+                onSelectItem={setSelectedItemId}
               />
             </div>
           </div>

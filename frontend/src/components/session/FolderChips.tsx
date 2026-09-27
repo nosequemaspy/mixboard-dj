@@ -12,6 +12,8 @@ interface TagSidebarProps {
   onRename?: (folderId: number, name: string, color: string) => void;
   readOnly?: boolean;
   horizontal?: boolean;
+  selectedItem?: { id: number; songTitle: string; folderIds: number[] } | null;
+  onAssignTag?: (itemId: number, folderId: number) => void;
 }
 
 const TAG_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -27,6 +29,8 @@ export function TagSidebar({
   onRename,
   readOnly = false,
   horizontal = false,
+  selectedItem,
+  onAssignTag,
 }: TagSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -35,6 +39,8 @@ export function TagSidebar({
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('');
   const [contextMenu, setContextMenu] = useState<{ folderId: number; x: number; y: number } | null>(null);
+  const [tagPopup, setTagPopup] = useState<{ folderId: number; rect: DOMRect } | null>(null);
+  const tagPopupRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +58,30 @@ export function TagSidebar({
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
+
+  // Close tag popup on click outside
+  useEffect(() => {
+    if (!tagPopup) return;
+    const close = (e: MouseEvent) => {
+      if (tagPopupRef.current && !tagPopupRef.current.contains(e.target as Node)) setTagPopup(null);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [tagPopup]);
+
+  // Close tag popup when selectedItem changes
+  useEffect(() => {
+    setTagPopup(null);
+  }, [selectedItem?.id]);
+
+  const handleFolderClick = (folderId: number, e: React.MouseEvent) => {
+    if (selectedItem && onAssignTag) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setTagPopup(prev => prev?.folderId === folderId ? null : { folderId, rect });
+    } else {
+      onFolderChange(folderId);
+    }
+  };
 
   const handleCreate = () => {
     if (newName.trim() && onCreate) {
@@ -90,12 +120,53 @@ export function TagSidebar({
     }
   };
 
+  // Tag popup component (shared between layouts)
+  const renderTagPopup = () => {
+    if (!tagPopup || !selectedItem) return null;
+    const folder = folders.find(f => f.id === tagPopup.folderId);
+    if (!folder) return null;
+    const isAssigned = selectedItem.folderIds.includes(folder.id);
+    return (
+      <div
+        ref={tagPopupRef}
+        className="fixed z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[200px]"
+        style={{ left: tagPopup.rect.left, top: tagPopup.rect.bottom + 4 }}
+      >
+        <button
+          onClick={() => {
+            onAssignTag!(selectedItem.id, folder.id);
+            setTagPopup(null);
+          }}
+          className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-text-primary"
+        >
+          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
+          {isAssigned
+            ? `Quitar de ${folder.name}`
+            : `Agregar '${selectedItem.songTitle.length > 20 ? selectedItem.songTitle.slice(0, 20) + '...' : selectedItem.songTitle}' a ${folder.name}`}
+        </button>
+        <div className="mx-2 my-0.5 border-t border-border/30" />
+        <button
+          onClick={() => {
+            onFolderChange(folder.id);
+            setTagPopup(null);
+          }}
+          className="w-full text-left px-3 py-2 text-xs text-text-muted hover:bg-bg-hover/80 hover:text-text-primary flex items-center gap-2 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0">
+            <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Ir a {folder.name}
+        </button>
+      </div>
+    );
+  };
+
   // Horizontal chip layout (used in public view)
   if (horizontal) {
     return (
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border/40 overflow-x-auto scrollbar-none bg-bg-secondary/40">
         <button
-          onClick={() => onFolderChange(null)}
+          onClick={() => { onFolderChange(null); setTagPopup(null); }}
           className={`shrink-0 text-[11px] px-3 py-1 rounded-md font-medium transition-all duration-150 flex items-center gap-1.5 ${
             activeFolder === null
               ? 'bg-accent text-white shadow-sm shadow-accent/25'
@@ -108,10 +179,10 @@ export function TagSidebar({
         {folders.map(folder => (
           <button
             key={folder.id}
-            onClick={() => onFolderChange(folder.id)}
+            onClick={(e) => handleFolderClick(folder.id, e)}
             className={`shrink-0 text-[11px] px-3 py-1 rounded-md font-medium transition-all duration-150 flex items-center gap-1.5 ${
               activeFolder === folder.id ? 'text-white shadow-sm' : 'hover:brightness-125'
-            }`}
+            } ${tagPopup?.folderId === folder.id ? 'ring-2 ring-white/40' : ''}`}
             style={{
               backgroundColor: activeFolder === folder.id ? folder.color : `${folder.color}18`,
               color: activeFolder === folder.id ? 'white' : folder.color,
@@ -122,6 +193,7 @@ export function TagSidebar({
             <span className={`text-[10px] ${activeFolder === folder.id ? 'text-white/60' : 'opacity-50'}`}>{folderItemCounts[folder.id] || 0}</span>
           </button>
         ))}
+        {renderTagPopup()}
       </div>
     );
   }
@@ -138,7 +210,7 @@ export function TagSidebar({
       <div className="flex-1 overflow-y-auto px-1.5 py-1 space-y-0.5">
         {/* All */}
         <button
-          onClick={() => onFolderChange(null)}
+          onClick={() => { onFolderChange(null); setTagPopup(null); }}
           className={`w-full text-left text-[11px] px-2.5 py-1.5 rounded-md font-medium transition-all duration-150 flex items-center gap-2 ${
             activeFolder === null
               ? 'bg-accent text-white shadow-sm shadow-accent/25'
@@ -185,13 +257,13 @@ export function TagSidebar({
           ) : (
             <button
               key={folder.id}
-              onClick={() => onFolderChange(folder.id)}
+              onClick={(e) => handleFolderClick(folder.id, e)}
               onContextMenu={e => handleContextMenu(e, folder.id)}
               className={`w-full text-left text-[11px] px-2.5 py-1.5 rounded-md font-medium transition-all duration-150 flex items-center gap-2 ${
                 activeFolder === folder.id
                   ? 'text-white shadow-sm'
                   : 'hover:brightness-125'
-              }`}
+              } ${tagPopup?.folderId === folder.id ? 'ring-2 ring-white/40' : ''}`}
               style={{
                 backgroundColor: activeFolder === folder.id ? folder.color : `${folder.color}12`,
                 color: activeFolder === folder.id ? 'white' : folder.color,
@@ -265,6 +337,9 @@ export function TagSidebar({
           )}
         </div>
       )}
+
+      {/* Tag assign popup */}
+      {renderTagPopup()}
 
       {/* Context menu */}
       {contextMenu && (

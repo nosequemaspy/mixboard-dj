@@ -29,97 +29,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function FolderDropdown({ folders, currentFolderIds, onAssign }: {
-  folders: SessionFolder[];
-  currentFolderIds: number[];
-  onAssign: (folderId: number | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [open]);
-
-  const activeFolders = folders.filter(f => currentFolderIds.includes(f.id));
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(!open); }}
-        className={`text-xs px-1.5 py-1 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition-colors ${
-          activeFolders.length > 0
-            ? 'hover:brightness-125'
-            : 'bg-bg-tertiary/50 text-text-muted hover:text-text-primary'
-        }`}
-        style={activeFolders.length === 1 ? { backgroundColor: `${activeFolders[0].color}25`, color: activeFolders[0].color } : undefined}
-        title="Asignar etiqueta"
-      >
-        {activeFolders.length > 1 ? (
-          <span className="flex items-center gap-0.5">
-            {activeFolders.map(f => (
-              <span key={f.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />
-            ))}
-          </span>
-        ) : (
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-            <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
-          </svg>
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[150px]">
-          <button
-            onClick={() => { onAssign(null); setOpen(false); }}
-            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors ${
-              currentFolderIds.length === 0 ? 'text-accent' : 'text-text-primary'
-            }`}
-          >
-            <span className="ml-[18px]">Sin etiqueta</span>
-          </button>
-          {folders.length > 0 && <div className="mx-2 my-0.5 border-t border-border/30" />}
-          {folders.map(f => {
-            const isChecked = currentFolderIds.includes(f.id);
-            return (
-              <button
-                key={f.id}
-                onClick={() => { onAssign(f.id); }}
-                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                  isChecked ? '' : 'text-text-primary'
-                }`}
-                style={{
-                  color: isChecked ? f.color : undefined,
-                  backgroundColor: isChecked ? `${f.color}10` : undefined,
-                }}
-                onMouseEnter={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = `${f.color}0d`); }}
-                onMouseLeave={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = ''); }}
-              >
-                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
-                  isChecked ? 'border-current' : 'border-text-muted/40'
-                }`} style={isChecked ? { borderColor: f.color, backgroundColor: `${f.color}30` } : undefined}>
-                  {isChecked && (
-                    <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                    </svg>
-                  )}
-                </span>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                {f.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onAssignFolder, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove }: {
+function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove }: {
   item: SessionItem;
   isPlayed: boolean;
   isCurrent: boolean;
@@ -132,7 +42,6 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   isLast: boolean;
   onPlay: (item: SessionItem) => void;
   onAddToQueue: (item: SessionItem) => void;
-  onAssignFolder: (itemId: number, folderId: number | null) => void;
   onSetSeparator: (itemId: number, text: string | null) => void;
   onMoveUp: (itemId: number) => void;
   onMoveDown: (itemId: number) => void;
@@ -332,12 +241,22 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
           </svg>
         </button>
 
-        {/* Folder assign */}
-        <FolderDropdown
-          folders={folders}
-          currentFolderIds={item.folder_ids ?? []}
-          onAssign={(folderId) => onAssignFolder(item.id, folderId)}
-        />
+        {/* Tag dots */}
+        {(() => {
+          const itemFolders = folders.filter(f => (item.folder_ids ?? []).includes(f.id));
+          return itemFolders.length > 0 ? (
+            <span className="flex items-center gap-0.5 shrink-0">
+              {itemFolders.map(f => (
+                <span
+                  key={f.id}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: f.color, boxShadow: `0 0 4px ${f.color}40` }}
+                  title={f.name}
+                />
+              ))}
+            </span>
+          ) : null;
+        })()}
 
         {/* Add to queue */}
         <button
@@ -384,10 +303,22 @@ export function PlayerPlaylist() {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const [tagPopup, setTagPopup] = useState<{ folderId: number; rect: DOMRect } | null>(null);
+  const tagPopupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (creatingTag && tagInputRef.current) tagInputRef.current.focus();
   }, [creatingTag]);
+
+  // Close tag popup on click outside
+  useEffect(() => {
+    if (!tagPopup) return;
+    const close = (e: MouseEvent) => {
+      if (tagPopupRef.current && !tagPopupRef.current.contains(e.target as Node)) setTagPopup(null);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [tagPopup]);
 
   const filteredItems = usePlayerStore.getState().getFilteredItems();
   const allItemsWithSeparators = usePlayerStore.getState().getAllItemsWithSeparators();
@@ -461,6 +392,22 @@ export function PlayerPlaylist() {
 
   const handleTagClick = (tagId: number | null) => {
     usePlayerStore.getState().setActiveTag(tagId);
+  };
+
+  // Current item for tag popup
+  const currentItem = useMemo(() => {
+    if (!currentItemId) return null;
+    const item = filteredItems.find(i => i.id === currentItemId) ?? usePlayerStore.getState().sessionItems.find(i => i.id === currentItemId);
+    return item ?? null;
+  }, [currentItemId, filteredItems]);
+
+  const handleTagChipClick = (folderId: number, e: React.MouseEvent) => {
+    if (currentItem) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setTagPopup(prev => prev?.folderId === folderId ? null : { folderId, rect });
+    } else {
+      handleTagClick(folderId);
+    }
   };
 
   const handlePlayItem = (item: SessionItem) => {
@@ -650,7 +597,7 @@ export function PlayerPlaylist() {
       <div className="px-4 py-2 border-b border-border overflow-x-auto flex-shrink-0">
         <div className="flex gap-1.5 flex-nowrap items-center">
           <button
-            onClick={() => handleTagClick(null)}
+            onClick={() => { handleTagClick(null); setTagPopup(null); }}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors min-h-[36px] ${
               activeTagId === null
                 ? 'bg-accent text-white'
@@ -662,12 +609,12 @@ export function PlayerPlaylist() {
           {folders.map(folder => (
             <button
               key={folder.id}
-              onClick={() => handleTagClick(folder.id)}
+              onClick={(e) => handleTagChipClick(folder.id, e)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors min-h-[36px] ${
                 activeTagId === folder.id
                   ? 'text-white'
                   : 'text-text-secondary hover:opacity-80'
-              }`}
+              } ${tagPopup?.folderId === folder.id ? 'ring-2 ring-white/40' : ''}`}
               style={{
                 backgroundColor: activeTagId === folder.id
                   ? folder.color
@@ -727,6 +674,41 @@ export function PlayerPlaylist() {
             </button>
           </div>
         )}
+        {/* Tag assign popup */}
+        {tagPopup && currentItem && (() => {
+          const folder = folders.find(f => f.id === tagPopup.folderId);
+          if (!folder) return null;
+          const isAssigned = (currentItem.folder_ids ?? []).includes(folder.id);
+          return (
+            <div
+              ref={tagPopupRef}
+              className="fixed z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[200px]"
+              style={{ top: tagPopup.rect.bottom + 6, left: Math.min(tagPopup.rect.left, window.innerWidth - 220) }}
+            >
+              <button
+                onClick={async () => {
+                  await handleAssignFolder(currentItem.id, folder.id);
+                  setTagPopup(null);
+                }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover transition-colors flex items-center gap-2"
+                style={{ color: folder.color }}
+              >
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
+                {isAssigned ? `Quitar de ${folder.name}` : `Agregar "${currentItem.song.title.slice(0, 20)}" a ${folder.name}`}
+              </button>
+              <div className="mx-2 my-0.5 border-t border-border/30" />
+              <button
+                onClick={() => { handleTagClick(folder.id); setTagPopup(null); }}
+                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l.622.621a1.5 1.5 0 001.06.439H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z"/>
+                </svg>
+                Ir a {folder.name}
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Search bar */}
@@ -819,7 +801,6 @@ export function PlayerPlaylist() {
                       isLast={songIndex === filteredItems.length - 1}
                       onPlay={handlePlayItem}
                       onAddToQueue={handleAddToQueue}
-                      onAssignFolder={handleAssignFolder}
                       onSetSeparator={handleSetSeparator}
                       onMoveUp={handleMoveUp}
                       onMoveDown={handleMoveDown}
