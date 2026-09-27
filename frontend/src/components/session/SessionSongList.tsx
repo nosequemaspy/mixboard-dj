@@ -29,6 +29,14 @@ function formatDuration(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+function formatDurationLong(s: number) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
 function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (text: string) => void; onRemove: () => void }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(text);
@@ -92,7 +100,7 @@ function SeparatorBanner({ text, onEdit, onRemove }: { text: string; onEdit: (te
   );
 }
 
-function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onMoveUp, onMoveDown, onMoveToPosition, totalItems, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue, isTagSelected, onTagSelect }: {
+function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, activeFolder, isSelected, onToggleSelect, onMoveUp, onMoveDown, onMoveToPosition, totalItems, isFirst, isLast, playerActive, isCurrent, onPlayItem, onAddToQueue, onToggleTransitionEditor, isEditingTransition, restrictedMode, nextItem, isInQueue, isTagSelected, onTagSelect, accumulatedTime }: {
   item: SessionItem;
   sessionId: number;
   password?: string;
@@ -119,6 +127,7 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
   isInQueue?: boolean;
   isTagSelected?: boolean;
   onTagSelect?: (itemId: number) => void;
+  accumulatedTime?: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
 
@@ -358,6 +367,11 @@ function SortableItem({ item, sessionId, password, onUpdate, isNext, folders, ac
           COLA
         </span>
       )}
+      {isTagSelected && accumulatedTime != null && (
+        <span className="text-[10px] text-accent font-mono tabular-nums hidden sm:inline" title="Tiempo acumulado hasta aquí">
+          {formatDurationLong(accumulatedTime)}
+        </span>
+      )}
       <span className="text-xs text-text-muted font-mono tabular-nums hidden sm:inline">{formatDuration(item.song.duration_seconds)}</span>
       {/* Played indicator (visible in restricted mode) */}
       {hideEditControls && item.is_played && (
@@ -554,6 +568,19 @@ export function SessionSongList({
   const searchSource = search ? items.sort((a, b) => a.position - b.position) : visibleItems;
   const filtered = searchSource.filter(item => matchesSearch(search, item.song.title, item.song.artist));
 
+  // Compute accumulated time up to each song (inclusive)
+  const accumulatedTimeMap = useMemo(() => {
+    const map = new Map<number, number>();
+    let acc = 0;
+    for (const item of filtered) {
+      if (item.song && !item.separator_text) {
+        acc += item.song.duration_seconds;
+      }
+      map.set(item.id, acc);
+    }
+    return map;
+  }, [filtered]);
+
   const isFiltering = search.length > 0;
   const hasSelection = selectedItemIds.size > 0;
 
@@ -739,6 +766,7 @@ export function SessionSongList({
                 isInQueue={playerActive ? queuedSongIds.has(item.song_id) : false}
                 isTagSelected={item.id === selectedItemId}
                 onTagSelect={onSelectItem}
+                accumulatedTime={accumulatedTimeMap.get(item.id)}
               />
             ))}
           </SortableContext>
