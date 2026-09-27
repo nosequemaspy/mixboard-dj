@@ -64,7 +64,7 @@ function SessionNowPlaying() {
   );
 }
 
-function SessionTimeInfo({ items }: { items: SessionData['items'] }) {
+function SessionTimeInfo({ items, selectedItemId, activeFolder }: { items: SessionData['items']; selectedItemId?: number | null; activeFolder?: number | null }) {
   const currentItemId = usePlayerStore(s => s.currentItemId);
   const currentTime = usePlayerStore(s => s.currentTime);
   const playedSongIds = usePlayerStore(s => s.playedSongIds);
@@ -110,6 +110,27 @@ function SessionTimeInfo({ items }: { items: SessionData['items'] }) {
     return { withTransitions: withTrans, withoutTransitions: withoutTrans, remaining: rem };
   }, [items, currentItemId, currentTime, playedSongIds]);
 
+  // Accumulated time up to selected song
+  const accumulatedTime = useMemo(() => {
+    if (!selectedItemId) return null;
+    let visibleItems: SessionData['items'];
+    if (activeFolder != null) {
+      visibleItems = items
+        .filter(i => i.song && !i.separator_text && (i.folder_ids ?? []).includes(activeFolder))
+        .sort((a, b) => (a.folder_position ?? 0) - (b.folder_position ?? 0));
+    } else {
+      visibleItems = items
+        .filter(i => i.song && !i.separator_text)
+        .sort((a, b) => a.position - b.position);
+    }
+    let acc = 0;
+    for (const item of visibleItems) {
+      acc += item.song.duration_seconds;
+      if (item.id === selectedItemId) return acc;
+    }
+    return null;
+  }, [items, selectedItemId, activeFolder]);
+
   return (
     <div className="px-4 py-1.5 border-t border-border flex items-center gap-3 text-[11px] text-text-muted font-mono flex-wrap">
       <span title="Con transiciones (ajustado por velocidad y crossfade)">
@@ -121,6 +142,11 @@ function SessionTimeInfo({ items }: { items: SessionData['items'] }) {
       {currentItemId && (
         <span className="text-accent" title="Tiempo restante desde cancion actual">
           Restante: {formatDuration(remaining)}
+        </span>
+      )}
+      {accumulatedTime != null && (
+        <span className="text-accent" title="Tiempo acumulado hasta la canción seleccionada">
+          Acumulado: {formatDuration(accumulatedTime)}
         </span>
       )}
     </div>
@@ -504,10 +530,10 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
         )}
       </div>
 
-      {/* Time info (when player active and on songs tab) */}
-      {playerActive && activeTab === 'songs' && (
+      {/* Time info (when player active or song selected, on songs tab) */}
+      {(playerActive || selectedItemId) && activeTab === 'songs' && (
         <div className="flex-shrink-0">
-          <SessionTimeInfo items={session.items} />
+          <SessionTimeInfo items={session.items} selectedItemId={selectedItemId} activeFolder={activeFolder} />
         </div>
       )}
     </div>
