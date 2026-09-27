@@ -76,7 +76,7 @@ def range_file_response(file_path: Path, request: Request):
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(content_length),
-                "Cache-Control": "public, max-age=31536000, immutable",
+                "Cache-Control": "no-store",
             },
         )
 
