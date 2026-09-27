@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRemoteControl } from '../../hooks/useRemoteControl';
+import { matchesSearch } from '../../types';
 import { InstallPrompt } from '../shared/InstallPrompt';
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -62,7 +63,13 @@ export function RemoteLayout() {
   const song = currentItem?.song;
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  const [search, setSearch] = useState('');
   const filteredItems = usePlayerStore.getState().getFilteredItems();
+  const allItems = usePlayerStore(s => s.sessionItems);
+  const searchedItems = useMemo(() => {
+    const source = search ? allItems : filteredItems;
+    return source.filter(item => matchesSearch(search, item.song.title, item.song.artist));
+  }, [filteredItems, allItems, search]);
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = (parseFloat(e.target.value) / 100) * duration;
@@ -269,10 +276,25 @@ export function RemoteLayout() {
             </div>
           </div>
 
+          {/* Search */}
+          <div className="px-4 py-2 border-b border-border flex-shrink-0">
+            <div className="relative">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted/50">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar cancion..."
+                className="w-full bg-bg-primary border border-border/60 rounded-md pl-8 pr-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/60 placeholder:text-text-muted/50 transition-colors min-h-[40px]"
+              />
+            </div>
+          </div>
+
           {/* Song list */}
           <div className="flex-1 overflow-y-auto">
             <div className="py-1">
-              {filteredItems.map((item, index) => {
+              {searchedItems.map((item, index) => {
                 const isPlayed = playedSongIds.has(item.song_id);
                 const isCurrent = item.id === currentItemId;
 
