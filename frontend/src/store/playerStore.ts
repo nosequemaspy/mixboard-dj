@@ -23,6 +23,7 @@ interface PlayerStore {
 
   // Queue
   queue: QueueEntry[];
+  queueResumeItemId: number | null; // where to resume after queue is consumed
 
   // Shuffle
   shuffleEnabled: boolean;
@@ -91,6 +92,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   activeTagId: null,
   mainPlaylistPosition: 0,
   queue: [],
+  queueResumeItemId: null,
   shuffleEnabled: false,
   shuffledOrder: [],
   playedSongIds: new Set(),
@@ -183,11 +185,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       isLoadingSong: true,
       currentTime: 0,
       duration: item.song.duration_seconds,
+      queueResumeItemId: null,
     });
   },
 
   getNextItem: () => {
-    const { queue, currentItemId, playedSongIds, shuffleEnabled, shuffledOrder } = get();
+    const { queue, currentItemId, queueResumeItemId, playedSongIds, shuffleEnabled, shuffledOrder } = get();
     const filtered = get().getFilteredItems();
 
     // Queue takes priority
@@ -197,7 +200,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     if (filtered.length === 0) return null;
 
-    const currentIndex = filtered.findIndex(i => i.id === currentItemId);
+    // After queue is consumed, resume from where we were before the queue
+    const resumeId = queueResumeItemId ?? currentItemId;
+    const currentIndex = filtered.findIndex(i => i.id === resumeId);
 
     if (shuffleEnabled && shuffledOrder.length > 0) {
       // Find current position in shuffled order
@@ -252,22 +257,35 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   playNext: () => {
     const state = get();
-    const { queue } = state;
+    const { queue, currentItemId, queueResumeItemId } = state;
 
     // Consume from queue first
     if (queue.length > 0) {
       const next = queue[0].item;
-      set({ queue: queue.slice(1) });
-      state.playItem(next);
+      // Save resume position: remember where we were before the queue started
+      const resumeId = queueResumeItemId ?? currentItemId;
+      set({ queue: queue.slice(1), queueResumeItemId: resumeId });
+      // Play without clearing queueResumeItemId (playItem clears it, so set directly)
+      set({
+        currentItemId: next.id,
+        currentSongId: next.song_id,
+        isPlaying: true,
+        isLoadingSong: true,
+        currentTime: 0,
+        duration: next.song.duration_seconds,
+      });
       return;
     }
 
+    // Queue is empty — getNextItem uses queueResumeItemId to find next song
     const nextItem = state.getNextItem();
     if (nextItem) {
+      // Clear resume position and play normally
+      set({ queueResumeItemId: null });
       state.playItem(nextItem);
     } else {
       // No more songs
-      set({ isPlaying: false, isLoadingSong: false });
+      set({ isPlaying: false, isLoadingSong: false, queueResumeItemId: null });
     }
   },
 
