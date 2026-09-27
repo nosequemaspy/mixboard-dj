@@ -14,6 +14,7 @@ interface TagSidebarProps {
   horizontal?: boolean;
   selectedItem?: { id: number; songTitle: string; folderIds: number[] } | null;
   onAssignTag?: (itemId: number, folderId: number) => void;
+  assigningTag?: boolean;
 }
 
 const TAG_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -31,6 +32,7 @@ export function TagSidebar({
   horizontal = false,
   selectedItem,
   onAssignTag,
+  assigningTag = false,
 }: TagSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -73,6 +75,15 @@ export function TagSidebar({
   useEffect(() => {
     setTagPopup(null);
   }, [selectedItem?.id]);
+
+  // Close tag popup when assignment finishes (assigningTag goes false after being true)
+  const wasAssigning = useRef(false);
+  useEffect(() => {
+    if (wasAssigning.current && !assigningTag) {
+      setTagPopup(null);
+    }
+    wasAssigning.current = assigningTag;
+  }, [assigningTag]);
 
   const handleFolderClick = (folderId: number, e: React.MouseEvent) => {
     if (selectedItem && onAssignTag) {
@@ -135,14 +146,20 @@ export function TagSidebar({
         <button
           onClick={() => {
             onAssignTag!(selectedItem.id, folder.id);
-            setTagPopup(null);
           }}
-          className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-text-primary"
+          disabled={assigningTag}
+          className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-text-primary disabled:opacity-50"
         >
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
-          {isAssigned
-            ? `Quitar de ${folder.name}`
-            : `Agregar '${selectedItem.songTitle.length > 20 ? selectedItem.songTitle.slice(0, 20) + '...' : selectedItem.songTitle}' a ${folder.name}`}
+          {assigningTag ? (
+            <span className="w-2.5 h-2.5 rounded-full shrink-0 border-2 border-current border-t-transparent animate-spin" />
+          ) : (
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
+          )}
+          {assigningTag
+            ? 'Guardando...'
+            : isAssigned
+              ? `Quitar de ${folder.name}`
+              : `Agregar '${selectedItem.songTitle.length > 20 ? selectedItem.songTitle.slice(0, 20) + '...' : selectedItem.songTitle}' a ${folder.name}`}
         </button>
         <div className="mx-2 my-0.5 border-t border-border/30" />
         <button
