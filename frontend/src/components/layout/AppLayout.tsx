@@ -39,12 +39,8 @@ function MobileCrossfader() {
   );
 }
 
-function HostPlaybackEngine() {
-  usePlaybackEngine();
-  return null;
-}
-
 function SessionPlaybackManager() {
+  usePlaybackEngine();
   const sessionId = usePlayerStore(s => s.sessionId);
   const { sendCommand, effectiveRole } = useRemoteControl(sessionId, 'auto');
   useMediaSession(effectiveRole === 'remote' ? sendCommand : undefined);
@@ -64,7 +60,7 @@ function SessionPlaybackManager() {
     }
   }, [activeSession, activeSessionId, playerSessionId]);
 
-  return effectiveRole === 'host' ? <HostPlaybackEngine /> : null;
+  return null;
 }
 
 export function AppLayout() {

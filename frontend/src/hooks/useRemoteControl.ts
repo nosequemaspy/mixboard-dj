@@ -41,18 +41,17 @@ export function useRemoteControl(
   }, [sessionId, preferredRole]);
 
   // Listen for role assignment from server (for 'auto' mode + demotions)
+  // Only update if role actually changed to avoid unnecessary re-renders/effect re-runs
   useEffect(() => {
-    const unsubJoined = wsClient.on('joined_session', (data: any) => {
-      if (data.role === 'host' || data.role === 'remote') {
-        setEffectiveRole(data.role);
+    const updateRole = (data: any) => {
+      const newRole = data.role;
+      if ((newRole === 'host' || newRole === 'remote') && newRole !== effectiveRoleRef.current) {
+        setEffectiveRole(newRole);
       }
-    });
+    };
 
-    const unsubRoleChanged = wsClient.on('role_changed', (data: any) => {
-      if (data.role === 'host' || data.role === 'remote') {
-        setEffectiveRole(data.role);
-      }
-    });
+    const unsubJoined = wsClient.on('joined_session', updateRole);
+    const unsubRoleChanged = wsClient.on('role_changed', updateRole);
 
     return () => {
       unsubJoined();
