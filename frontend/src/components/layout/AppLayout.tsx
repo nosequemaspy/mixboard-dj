@@ -42,8 +42,8 @@ function MobileCrossfader() {
 function SessionPlaybackManager() {
   usePlaybackEngine();
   const sessionId = usePlayerStore(s => s.sessionId);
-  const { sendCommand, effectiveRole } = useRemoteControl(sessionId, 'auto');
-  useMediaSession(effectiveRole === 'remote' ? sendCommand : undefined);
+  useRemoteControl(sessionId, 'host');
+  useMediaSession();
 
   const activeSession = useSessionStore(s => s.activeSession);
   const activeSessionId = useSessionStore(s => s.activeSessionId);
