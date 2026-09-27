@@ -310,29 +310,25 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
           {formatTime(item.song.duration_seconds)}
         </span>
 
-        {/* Separator toggle — only in editable mode */}
-        {!restrictedMode && (
-          <button
-            onClick={e => { e.stopPropagation(); onSetSeparator(item.id, item.separator_text ? null : 'Separador'); }}
-            className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition-colors flex-shrink-0 sm:opacity-0 sm:group-hover/row:opacity-100 ${
-              item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'text-text-muted/40 hover:text-cyan-400'
-            }`}
-            title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-              <line x1="2" y1="4" x2="14" y2="4" /><line x1="2" y1="8" x2="14" y2="8" /><line x1="2" y1="12" x2="14" y2="12" />
-            </svg>
-          </button>
-        )}
+        {/* Separator toggle */}
+        <button
+          onClick={e => { e.stopPropagation(); onSetSeparator(item.id, item.separator_text ? null : 'Separador'); }}
+          className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition-colors flex-shrink-0 sm:opacity-0 sm:group-hover/row:opacity-100 ${
+            item.separator_text ? 'bg-cyan-400/20 text-cyan-400' : 'text-text-muted/40 hover:text-cyan-400'
+          }`}
+          title={item.separator_text ? 'Quitar separador' : 'Agregar separador arriba'}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <line x1="2" y1="4" x2="14" y2="4" /><line x1="2" y1="8" x2="14" y2="8" /><line x1="2" y1="12" x2="14" y2="12" />
+          </svg>
+        </button>
 
-        {/* Folder assign — only in editable mode */}
-        {!restrictedMode && (
-          <FolderDropdown
-            folders={folders}
-            currentFolderId={item.folder_id}
-            onAssign={(folderId) => onAssignFolder(item.id, folderId)}
-          />
-        )}
+        {/* Folder assign */}
+        <FolderDropdown
+          folders={folders}
+          currentFolderId={item.folder_id}
+          onAssign={(folderId) => onAssignFolder(item.id, folderId)}
+        />
 
         {/* Add to queue */}
         <button
@@ -673,8 +669,8 @@ export function PlayerPlaylist() {
               {folder.name}
             </button>
           ))}
-          {/* Create tag button — only in editable mode */}
-          {!restrictedMode && !creatingTag && (
+          {/* Create tag button */}
+          {!creatingTag && (
             <button
               onClick={() => {
                 setNewTagColor(TAG_COLORS[folders.length % TAG_COLORS.length]);
@@ -690,7 +686,7 @@ export function PlayerPlaylist() {
           )}
         </div>
         {/* Inline tag creation */}
-        {!restrictedMode && creatingTag && (
+        {creatingTag && (
           <div className="flex items-center gap-2 mt-2">
             <input
               ref={tagInputRef}
