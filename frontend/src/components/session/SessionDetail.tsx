@@ -249,6 +249,29 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
     onUpdate();
   };
 
+  const handleAssignTagAtPosition = async (itemId: number, folderId: number, position: 'start' | 'end') => {
+    const item = session.items.find(i => i.id === itemId);
+    if (!item) return;
+    const isAssigned = (item.folder_ids ?? []).includes(folderId);
+
+    // If not assigned yet, assign first (adds to end by default)
+    if (!isAssigned) {
+      await api.assignItemFolder(session.id, itemId, folderId, password);
+    }
+
+    // Get items in this folder, sorted by folder_position
+    const folderItems = session.items
+      .filter(i => (i.folder_ids ?? []).includes(folderId) || i.id === itemId)
+      .sort((a, b) => (a.folder_position ?? 0) - (b.folder_position ?? 0));
+
+    // Build new order: remove itemId from current position, insert at start or end
+    const otherIds = folderItems.filter(i => i.id !== itemId).map(i => i.id);
+    const newOrder = position === 'start' ? [itemId, ...otherIds] : [...otherIds, itemId];
+
+    await api.reorderFolderItems(session.id, folderId, newOrder, password);
+    onUpdate();
+  };
+
   const handleTogglePlayer = () => {
     usePlayerStore.getState().toggleSessionPlayer();
   };
@@ -400,6 +423,7 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
               onRename={handleRenameFolder}
               selectedItem={selectedItem}
               onAssignTag={handleAssignTag}
+              onAssignTagAtPosition={handleAssignTagAtPosition}
             />
             {/* Song list */}
             <div className="flex-1 min-w-0">

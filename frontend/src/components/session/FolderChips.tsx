@@ -14,6 +14,7 @@ interface TagSidebarProps {
   horizontal?: boolean;
   selectedItem?: { id: number; songTitle: string; folderIds: number[] } | null;
   onAssignTag?: (itemId: number, folderId: number) => void;
+  onAssignTagAtPosition?: (itemId: number, folderId: number, position: 'start' | 'end') => void;
 }
 
 const TAG_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -31,6 +32,7 @@ export function TagSidebar({
   horizontal = false,
   selectedItem,
   onAssignTag,
+  onAssignTagAtPosition,
 }: TagSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -126,24 +128,61 @@ export function TagSidebar({
     const folder = folders.find(f => f.id === tagPopup.folderId);
     if (!folder) return null;
     const isAssigned = selectedItem.folderIds.includes(folder.id);
+    const actionLabel = isAssigned ? 'Mover' : 'Agregar';
     return (
       <div
         ref={tagPopupRef}
         className="fixed z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[200px]"
         style={{ left: tagPopup.rect.left, top: tagPopup.rect.bottom + 4 }}
       >
+        {/* Add/Move to start */}
         <button
           onClick={() => {
-            onAssignTag!(selectedItem.id, folder.id);
+            if (onAssignTagAtPosition) {
+              onAssignTagAtPosition(selectedItem.id, folder.id, 'start');
+            }
             setTagPopup(null);
           }}
           className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-text-primary"
         >
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
-          {isAssigned
-            ? `Quitar de ${folder.name}`
-            : `Agregar '${selectedItem.songTitle.length > 20 ? selectedItem.songTitle.slice(0, 20) + '...' : selectedItem.songTitle}' a ${folder.name}`}
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0" style={{ color: folder.color }}>
+            <path d="M8 11V5M5 7l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {actionLabel} al inicio de {folder.name}
         </button>
+        {/* Add/Move to end */}
+        <button
+          onClick={() => {
+            if (onAssignTagAtPosition) {
+              onAssignTagAtPosition(selectedItem.id, folder.id, 'end');
+            }
+            setTagPopup(null);
+          }}
+          className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-text-primary"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0" style={{ color: folder.color }}>
+            <path d="M8 5v6M5 9l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {actionLabel} al final de {folder.name}
+        </button>
+        {/* Remove (only if already assigned) */}
+        {isAssigned && (
+          <>
+            <div className="mx-2 my-0.5 border-t border-border/30" />
+            <button
+              onClick={() => {
+                onAssignTag!(selectedItem.id, folder.id);
+                setTagPopup(null);
+              }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors text-danger"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0">
+                <path d="M4 8h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              Quitar de {folder.name}
+            </button>
+          </>
+        )}
         <div className="mx-2 my-0.5 border-t border-border/30" />
         <button
           onClick={() => {
