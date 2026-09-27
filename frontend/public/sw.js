@@ -1,11 +1,4 @@
-const CACHE_NAME = 'mixboard-v2';
-
-// Only cache the app shell — audio streams and API calls are always network
-const APP_SHELL = [
-  '/',
-  '/player',
-  '/remote',
-];
+const CACHE_NAME = 'mixboard-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -30,23 +23,29 @@ self.addEventListener('fetch', (event) => {
   // For navigation requests, try network first, fall back to cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/'))
+      fetch(event.request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put('/', clone));
+          return response;
+        })
+        .catch(() => caches.match('/'))
     );
     return;
   }
 
-  // For assets (JS, CSS), use stale-while-revalidate
+  // For assets (JS, CSS with hash in filename): network first, cache fallback
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
-        cache.match(event.request).then(cached => {
-          const fetched = fetch(event.request).then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
-            return response;
-          });
-          return cached || fetched;
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          }
+          return response;
         })
-      )
+        .catch(() => caches.match(event.request))
     );
     return;
   }
