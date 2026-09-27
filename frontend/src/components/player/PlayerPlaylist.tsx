@@ -385,17 +385,12 @@ export function PlayerPlaylist() {
     return { totalDuration: total, totalRemaining: remaining };
   }, [filteredItems, currentItemId, currentTime, playedSongIds]);
 
-  // Accumulated time up to selected song
+  // Accumulated time up to selected song (simple sum of full durations)
   const accumulatedTime = useMemo(() => {
     if (!selectedItemId) return null;
     let acc = 0;
     for (const item of filteredItems) {
-      const eff = getEffectivePlaybackSettings(item);
-      const start = eff.start_time;
-      const end = eff.end_time ?? item.song.duration_seconds;
-      const speed = eff.playback_speed;
-      const effectiveDuration = Math.max(0, end - start);
-      acc += speed > 0 ? effectiveDuration / speed : effectiveDuration;
+      acc += item.song.duration_seconds;
       if (item.id === selectedItemId) return acc;
     }
     return null;
