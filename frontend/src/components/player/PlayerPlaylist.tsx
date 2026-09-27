@@ -162,7 +162,7 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        className={`flex items-center gap-1.5 px-2 py-2 transition-colors overflow-hidden group/row ${
+        className={`flex items-center gap-1.5 px-2 py-2 transition-colors group/row ${
           isCurrent
             ? 'bg-accent/10'
             : isNext
