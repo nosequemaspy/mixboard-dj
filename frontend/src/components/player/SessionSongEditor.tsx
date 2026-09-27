@@ -999,7 +999,7 @@ export function SessionSongEditor() {
     <div className="flex flex-col border-b border-border bg-bg-primary">
 
       {/* === Header: Song info + Play + Zoom === */}
-      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 border-b border-border/50 bg-bg-secondary/40 overflow-hidden">
+      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 border-b border-border/50 bg-bg-secondary/40">
         <button
           onClick={handlePlayPause}
           className="w-7 h-7 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-colors flex-shrink-0"
