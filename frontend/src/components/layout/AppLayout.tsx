@@ -39,11 +39,15 @@ function MobileCrossfader() {
   );
 }
 
-function SessionPlaybackManager() {
+function HostPlaybackEngine() {
   usePlaybackEngine();
+  return null;
+}
+
+function SessionPlaybackManager() {
   const sessionId = usePlayerStore(s => s.sessionId);
-  useRemoteControl(sessionId, 'host');
-  useMediaSession();
+  const { sendCommand, effectiveRole } = useRemoteControl(sessionId, 'auto');
+  useMediaSession(effectiveRole === 'remote' ? sendCommand : undefined);
 
   const activeSession = useSessionStore(s => s.activeSession);
   const activeSessionId = useSessionStore(s => s.activeSessionId);
@@ -60,7 +64,7 @@ function SessionPlaybackManager() {
     }
   }, [activeSession, activeSessionId, playerSessionId]);
 
-  return null;
+  return effectiveRole === 'host' ? <HostPlaybackEngine /> : null;
 }
 
 export function AppLayout() {

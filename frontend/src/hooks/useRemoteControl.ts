@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { wsClient } from '../api/websocket';
 import { usePlayerStore } from '../store/playerStore';
 import { getPlaybackEngine } from './usePlaybackEngine';
@@ -8,32 +8,59 @@ import { getPlaybackEngine } from './usePlaybackEngine';
  *
  * Host mode: broadcasts playback state to all connected remotes.
  * Remote mode: receives state from host and sends commands.
+ * Auto mode: server decides role based on whether a host already exists.
  */
-export function useRemoteControl(sessionId: number | null, role: 'host' | 'remote') {
+export function useRemoteControl(
+  sessionId: number | null,
+  preferredRole: 'host' | 'remote' | 'auto'
+): { sendCommand: (cmd: string, extra?: Record<string, any>) => void; effectiveRole: 'host' | 'remote' | null } {
   const broadcastRef = useRef<number | null>(null);
-  const roleRef = useRef(role);
-  roleRef.current = role;
+  const [effectiveRole, setEffectiveRole] = useState<'host' | 'remote' | null>(
+    preferredRole === 'auto' ? null : preferredRole
+  );
+  const effectiveRoleRef = useRef(effectiveRole);
+  effectiveRoleRef.current = effectiveRole;
 
   // Join/leave session room (including on reconnect)
   useEffect(() => {
     if (!sessionId) return;
 
-    wsClient.send('join_session', { session_id: sessionId, role });
+    wsClient.send('join_session', { session_id: sessionId, role: preferredRole });
 
     // Rejoin room if WebSocket reconnects (network blip)
     const unsubReconnect = wsClient.on('_reconnect', () => {
-      wsClient.send('join_session', { session_id: sessionId, role });
+      wsClient.send('join_session', { session_id: sessionId, role: preferredRole });
     });
 
     return () => {
       unsubReconnect();
       wsClient.send('leave_session', {});
     };
-  }, [sessionId, role]);
+  }, [sessionId, preferredRole]);
+
+  // Listen for role assignment from server (for 'auto' mode + demotions)
+  useEffect(() => {
+    const unsubJoined = wsClient.on('joined_session', (data: any) => {
+      if (data.role === 'host' || data.role === 'remote') {
+        setEffectiveRole(data.role);
+      }
+    });
+
+    const unsubRoleChanged = wsClient.on('role_changed', (data: any) => {
+      if (data.role === 'host' || data.role === 'remote') {
+        setEffectiveRole(data.role);
+      }
+    });
+
+    return () => {
+      unsubJoined();
+      unsubRoleChanged();
+    };
+  }, []);
 
   // HOST: broadcast state every 1.5 seconds
   useEffect(() => {
-    if (role !== 'host' || !sessionId) return;
+    if (effectiveRole !== 'host' || !sessionId) return;
 
     const broadcastState = () => {
       const state = usePlayerStore.getState();
@@ -48,6 +75,8 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
         shuffleEnabled: state.shuffleEnabled,
         playedSongIds: Array.from(state.playedSongIds),
         queue: state.queue.map(q => q.item.id),
+        isTransitioning: state.isTransitioning,
+        nextTransitionSongTitle: state.nextTransitionSongTitle,
       });
     };
 
@@ -59,11 +88,11 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
         broadcastRef.current = null;
       }
     };
-  }, [role, sessionId]);
+  }, [effectiveRole, sessionId]);
 
   // HOST: handle incoming commands from remotes
   useEffect(() => {
-    if (role !== 'host') return;
+    if (effectiveRole !== 'host') return;
 
     const unsub = wsClient.on('playback_command', (data: any) => {
       const store = usePlayerStore.getState();
@@ -128,11 +157,11 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
     });
 
     return () => { unsub(); };
-  }, [role]);
+  }, [effectiveRole]);
 
   // REMOTE: receive playback state from host
   useEffect(() => {
-    if (role !== 'remote') return;
+    if (effectiveRole !== 'remote') return;
 
     const unsub = wsClient.on('playback_state', (data: any) => {
       const store = usePlayerStore.getState();
@@ -168,15 +197,23 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
       if (data.playedSongIds) {
         usePlayerStore.setState({ playedSongIds: new Set(data.playedSongIds) });
       }
+
+      // Sync transition state
+      if (data.isTransitioning !== undefined) {
+        usePlayerStore.setState({
+          isTransitioning: data.isTransitioning,
+          nextTransitionSongTitle: data.nextTransitionSongTitle ?? null,
+        });
+      }
     });
 
     return () => { unsub(); };
-  }, [role]);
+  }, [effectiveRole]);
 
   // Send command to host (used by remote)
   const sendCommand = useCallback((command: string, extra?: Record<string, any>) => {
     wsClient.send('playback_command', { command, ...extra });
   }, []);
 
-  return { sendCommand };
+  return { sendCommand, effectiveRole };
 }

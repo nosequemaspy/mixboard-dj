@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRemoteControl } from '../../hooks/useRemoteControl';
+import { useMediaSession } from '../../hooks/useMediaSession';
 import { InstallPrompt } from '../shared/InstallPrompt';
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00';
@@ -35,6 +36,7 @@ export function RemoteLayout() {
 
   // Remote control: this is a REMOTE (sends commands, no audio)
   const { sendCommand } = useRemoteControl(playerSessionId, 'remote');
+  useMediaSession(sendCommand);
 
   // Fetch sessions on mount
   useEffect(() => {

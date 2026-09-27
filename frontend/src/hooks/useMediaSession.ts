@@ -16,7 +16,7 @@ function getThumbnailUrl(song: { source_url: string | null; source_type: string 
 // on mobile, preventing the AudioContext from being suspended in background.
 const SILENT_MP3 = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYlPfGiAAAAAAD/+1DEAAAGAAGn9AAAIgAANP8AAABM//tQxBUAAADSAAAAAAAAANIAAAAA';
 
-export function useMediaSession() {
+export function useMediaSession(sendCommand?: (cmd: string, extra?: Record<string, any>) => void) {
   const currentSongId = usePlayerStore(s => s.currentSongId);
   const sessionItems = usePlayerStore(s => s.sessionItems);
   const isPlaying = usePlayerStore(s => s.isPlaying);
@@ -65,12 +65,15 @@ export function useMediaSession() {
       : item.song.title;
 
     const thumbnailUrl = getThumbnailUrl(item.song);
+    const artwork = thumbnailUrl
+      ? [{ src: thumbnailUrl, sizes: '480x360', type: 'image/jpeg' }]
+      : [{ src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' }];
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
       artist: item.song.artist || 'Unknown Artist',
       album: 'MixBoard DJ',
-      ...(thumbnailUrl ? { artwork: [{ src: thumbnailUrl, sizes: '480x360', type: 'image/jpeg' }] } : {}),
+      artwork,
     });
   }, [currentSongId, sessionItems, isTransitioning, nextTransitionSongTitle]);
 
@@ -105,10 +108,17 @@ export function useMediaSession() {
   }, [currentTime, duration]);
 
   // Register action handlers
+  const sendCommandRef = useRef(sendCommand);
+  sendCommandRef.current = sendCommand;
+
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
 
     const handlePlay = () => {
+      if (sendCommandRef.current) {
+        sendCommandRef.current('play');
+        return;
+      }
       const store = usePlayerStore.getState();
       if (!store.currentItemId) {
         // Nothing playing — start from first unplayed song (like PlayerControls)
@@ -123,10 +133,18 @@ export function useMediaSession() {
     };
 
     const handlePause = () => {
+      if (sendCommandRef.current) {
+        sendCommandRef.current('pause');
+        return;
+      }
       usePlayerStore.getState().setIsPlaying(false);
     };
 
     const handlePreviousTrack = () => {
+      if (sendCommandRef.current) {
+        sendCommandRef.current('previous');
+        return;
+      }
       const store = usePlayerStore.getState();
       if (store.currentTime > 3) {
         store.setCurrentTime(0);
@@ -137,6 +155,10 @@ export function useMediaSession() {
     };
 
     const handleNextTrack = () => {
+      if (sendCommandRef.current) {
+        sendCommandRef.current('next');
+        return;
+      }
       usePlayerStore.getState().playNext();
     };
 
