@@ -29,7 +29,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove }: {
+function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove, isSelected, onSelect }: {
   item: SessionItem;
   isPlayed: boolean;
   isCurrent: boolean;
@@ -47,6 +47,8 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   onMoveDown: (itemId: number) => void;
   onMoveToPosition: (itemId: number, pos: number) => void;
   onRemove: (itemId: number) => void;
+  isSelected?: boolean;
+  onSelect?: (itemId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
   const style = {
@@ -80,12 +82,15 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        className={`flex items-center gap-1.5 px-2 py-2 transition-colors group/row ${
+        onClick={() => onSelect?.(item.id)}
+        className={`flex items-center gap-1.5 px-2 py-2 transition-colors group/row cursor-pointer ${
           isCurrent
             ? 'bg-accent/10'
-            : isNext
-              ? 'bg-accent/5 border-l-2 border-l-accent/40'
-              : 'hover:bg-bg-tertiary'
+            : isSelected
+              ? 'bg-accent/5 ring-1 ring-inset ring-accent/40'
+              : isNext
+                ? 'bg-accent/5 border-l-2 border-l-accent/40'
+                : 'hover:bg-bg-tertiary'
         }`}
       >
         {/* Drag handle — only in editable mode */}
@@ -305,6 +310,7 @@ export function PlayerPlaylist() {
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [tagPopup, setTagPopup] = useState<{ folderId: number; rect: DOMRect } | null>(null);
   const tagPopupRef = useRef<HTMLDivElement>(null);
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
 
   useEffect(() => {
     if (creatingTag && tagInputRef.current) tagInputRef.current.focus();
@@ -378,6 +384,22 @@ export function PlayerPlaylist() {
 
     return { totalDuration: total, totalRemaining: remaining };
   }, [filteredItems, currentItemId, currentTime, playedSongIds]);
+
+  // Accumulated time up to selected song
+  const accumulatedTime = useMemo(() => {
+    if (!selectedItemId) return null;
+    let acc = 0;
+    for (const item of filteredItems) {
+      const eff = getEffectivePlaybackSettings(item);
+      const start = eff.start_time;
+      const end = eff.end_time ?? item.song.duration_seconds;
+      const speed = eff.playback_speed;
+      const effectiveDuration = Math.max(0, end - start);
+      acc += speed > 0 ? effectiveDuration / speed : effectiveDuration;
+      if (item.id === selectedItemId) return acc;
+    }
+    return null;
+  }, [filteredItems, selectedItemId]);
 
   const getPassword = () => {
     if (!sessionId) return undefined;
@@ -733,6 +755,11 @@ export function PlayerPlaylist() {
         {currentItemId && (
           <span title="Tiempo restante">Restante: {formatDuration(totalRemaining)}</span>
         )}
+        {accumulatedTime != null && (
+          <span className="text-accent" title="Tiempo acumulado hasta la canción seleccionada">
+            Acumulado: {formatDuration(accumulatedTime)}
+          </span>
+        )}
       </div>
 
       {/* Queue */}
@@ -806,6 +833,8 @@ export function PlayerPlaylist() {
                       onMoveDown={handleMoveDown}
                       onMoveToPosition={handleMoveToPosition}
                       onRemove={handleRemoveItem}
+                      isSelected={item.id === selectedItemId}
+                      onSelect={setSelectedItemId}
                     />
                   );
                 })}
