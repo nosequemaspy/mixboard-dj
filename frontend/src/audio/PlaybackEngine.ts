@@ -125,7 +125,7 @@ export class PlaybackEngine {
         const effectiveEnd = config.endTime ?? this.currentDuration;
         const transitionPoint = effectiveEnd - config.transitionDuration;
 
-        if (time >= transitionPoint && time < effectiveEnd && !this.pendingLoad) {
+        if (time >= transitionPoint && !this.pendingLoad) {
           this.beginTransition();
         }
       }
@@ -306,6 +306,10 @@ export class PlaybackEngine {
       this.onSongEnd?.();
       return;
     }
+
+    // Ensure gains are in the correct starting state
+    this.engine.setTransitionGain(this.activeDeck, 1);
+    this.engine.setTransitionGain(this.preloadDeck, 0);
 
     const nextTitle = this.preloadedItem.song?.title ?? null;
     this.onTransitionChange?.(true, nextTitle);

@@ -475,6 +475,14 @@ function WaveformDeck({
       // Refresh session data
       await useSessionStore.getState().fetchActiveSession(sessionId);
       usePlayerStore.getState().syncFromSessionStore();
+
+      // Update PlaybackEngine config so auto-transitions use the new settings
+      const updatedItems = usePlayerStore.getState().sessionItems;
+      const updatedItem = updatedItems.find(i => i.id === item.id);
+      if (updatedItem) {
+        getPlaybackEngine().refreshCurrentConfig(updatedItem);
+      }
+
       onToggleEdit();
     } catch (err) {
       console.error('Failed to save playback settings:', err);
