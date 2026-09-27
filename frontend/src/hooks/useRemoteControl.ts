@@ -15,8 +15,10 @@ export function useRemoteControl(
   preferredRole: 'host' | 'remote' | 'auto'
 ): { sendCommand: (cmd: string, extra?: Record<string, any>) => void; effectiveRole: 'host' | 'remote' | null } {
   const broadcastRef = useRef<number | null>(null);
+  // For 'auto', start as 'host' optimistically so playback engine mounts immediately.
+  // Server will demote to 'remote' via joined_session/role_changed if a host already exists.
   const [effectiveRole, setEffectiveRole] = useState<'host' | 'remote' | null>(
-    preferredRole === 'auto' ? null : preferredRole
+    preferredRole === 'auto' ? 'host' : preferredRole
   );
   const effectiveRoleRef = useRef(effectiveRole);
   effectiveRoleRef.current = effectiveRole;
