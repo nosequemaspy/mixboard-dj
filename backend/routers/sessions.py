@@ -641,11 +641,10 @@ def assign_item_folder(
             current_ids.remove(folder_id)
         else:
             current_ids.append(folder_id)
-            # Set folder_position to end of folder (use SQL LIKE instead of loading all items)
-            count = db.query(SessionItem).filter(
-                SessionItem.session_id == session_id,
-                SessionItem.folder_ids.like(f"%{folder_id}%"),
-            ).count()
+            # Set folder_position to end of folder
+            count = sum(1 for i in db.query(SessionItem).filter(
+                SessionItem.session_id == session_id
+            ).all() if folder_id in (json.loads(i.folder_ids) if i.folder_ids else []))
             item.folder_position = count
     else:
         # Clear all folders

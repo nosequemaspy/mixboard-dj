@@ -85,7 +85,7 @@ class ConnectionManager:
 
     async def _handle_join(self, websocket: WebSocket, data: dict):
         session_id = data.get("session_id")
-        role = data.get("role", "remote")  # "host", "remote", or "auto"
+        role = data.get("role", "remote")  # "host" or "remote"
         if session_id is None:
             return
 
@@ -106,10 +106,6 @@ class ConnectionManager:
             }
 
         room = self.session_rooms[session_id]
-
-        # Auto role: become host if no host exists, otherwise remote
-        if role == "auto":
-            role = "remote" if room["host"] is not None else "host"
 
         if role == "host":
             # If there's already a host, demote it to remote

@@ -244,17 +244,9 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
     }
   };
 
-  const [assigningTag, setAssigningTag] = useState(false);
   const handleAssignTag = async (itemId: number, folderId: number) => {
-    setAssigningTag(true);
-    try {
-      await api.assignItemFolder(session.id, itemId, folderId, password);
-      onUpdate();
-    } catch {
-      // ignore
-    } finally {
-      setAssigningTag(false);
-    }
+    await api.assignItemFolder(session.id, itemId, folderId, password);
+    onUpdate();
   };
 
   const handleTogglePlayer = () => {
@@ -408,7 +400,6 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
               onRename={handleRenameFolder}
               selectedItem={selectedItem}
               onAssignTag={handleAssignTag}
-              assigningTag={assigningTag}
             />
             {/* Song list */}
             <div className="flex-1 min-w-0">

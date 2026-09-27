@@ -48,8 +48,6 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
         shuffleEnabled: state.shuffleEnabled,
         playedSongIds: Array.from(state.playedSongIds),
         queue: state.queue.map(q => q.item.id),
-        isTransitioning: state.isTransitioning,
-        nextTransitionSongTitle: state.nextTransitionSongTitle,
       });
     };
 
@@ -169,14 +167,6 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
       // Sync played songs
       if (data.playedSongIds) {
         usePlayerStore.setState({ playedSongIds: new Set(data.playedSongIds) });
-      }
-
-      // Sync transition state
-      if (data.isTransitioning !== undefined) {
-        usePlayerStore.setState({
-          isTransitioning: data.isTransitioning,
-          nextTransitionSongTitle: data.nextTransitionSongTitle ?? null,
-        });
       }
     });
 
