@@ -274,7 +274,7 @@ export function SessionSongEditor() {
       { id: genId(), start: time, end: clip.end, status: clip.status },
     );
     setClips(newClips);
-    setSelectedClipId(newClips[idx + 1].id);
+    setSelectedClipId(null);
   }, [wsDuration, song?.duration_seconds, pushHistory]);
 
   const setTransitionAtPlayhead = useCallback(() => {
