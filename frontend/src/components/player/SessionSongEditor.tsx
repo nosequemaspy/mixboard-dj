@@ -759,6 +759,31 @@ export function SessionSongEditor() {
     return () => { getPlaybackEngine().setEditorCutSections(null); };
   }, []);
 
+  // --- Sync editor mute sections to PlaybackEngine for real-time vocal mute preview ---
+
+  useEffect(() => {
+    const muteSects = clips
+      .filter(c => c.status === 'mute')
+      .map(c => ({ start: c.start, end: c.end }));
+    getPlaybackEngine().setEditorMuteSections(muteSects.length > 0 ? muteSects : null);
+  }, [clips]);
+
+  // Clear editor mutes from PlaybackEngine when editor unmounts
+  useEffect(() => {
+    return () => { getPlaybackEngine().setEditorMuteSections(null); };
+  }, []);
+
+  // When stems become ready mid-editing, re-push existing mute clips to trigger instrumental loading
+  useEffect(() => {
+    if (!canMuteVocals) return;
+    const muteSects = clipsRef.current
+      .filter(c => c.status === 'mute')
+      .map(c => ({ start: c.start, end: c.end }));
+    if (muteSects.length > 0) {
+      getPlaybackEngine().setEditorMuteSections(muteSects);
+    }
+  }, [canMuteVocals]);
+
   // --- Handlers ---
 
   const handleZoom = useCallback((v: number) => {

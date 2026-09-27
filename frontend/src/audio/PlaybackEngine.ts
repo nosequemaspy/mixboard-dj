@@ -58,6 +58,7 @@ export class PlaybackEngine {
   private currentConfig: SongPlaybackConfig | null = null;
   private currentDuration = 0;
   private editorCutSections: MuteSection[] | null = null;
+  private editorMuteSections: MuteSection[] | null = null;
   private bustCacheOnNextLoad = false;
 
   constructor(engine: AudioEngine) {
@@ -575,6 +576,22 @@ export class PlaybackEngine {
     this.editorCutSections = sections;
   }
 
+  /** Set temporary mute sections from the editor for real-time vocal mute preview.
+   *  Pass null to clear and fall back to saved mute sections. */
+  setEditorMuteSections(sections: MuteSection[] | null) {
+    this.editorMuteSections = sections;
+    // Compute effective sections: editor override or saved
+    const effective = sections ?? (this.currentItem ? getEffectiveMuteSections(this.currentItem) : []);
+    this.engine.setMuteSections(this.activeDeck, effective);
+    // If mute sections exist and stems are ready but instrumental not loaded, load it
+    if (sections && sections.length > 0 && this.currentItem) {
+      const hasStems = this.currentItem.song.stems_status === 'ready' && this.currentItem.song.stems.length > 0;
+      if (hasStems && !this.engine.isInstrumentalLoaded(this.activeDeck)) {
+        this.engine.loadInstrumentalHot(this.activeDeck, this.currentItem.song.id);
+      }
+    }
+  }
+
   /** Invalidate the current song (after physical audio edit).
    *  Stops both decks and clears all state so next play reloads fresh audio. */
   invalidateCurrentSong() {
@@ -583,6 +600,7 @@ export class PlaybackEngine {
     // With currentItem=null (set by stop()), the monitor safely no-ops
     // until playSong() sets a new currentItem.
     this.editorCutSections = null;
+    this.editorMuteSections = null;
     this.bustCacheOnNextLoad = true;
   }
 
@@ -608,7 +626,10 @@ export class PlaybackEngine {
   private applyDeckConfig(deckId: DeckId, item: SessionItem) {
     const config = getPlaybackConfig(item);
     this.engine.setTempo(deckId, config.playbackSpeed);
-    const muteSections = getEffectiveMuteSections(item);
+    // For active deck, editor mute overrides take priority
+    const muteSections = (deckId === this.activeDeck && this.editorMuteSections)
+      ? this.editorMuteSections
+      : getEffectiveMuteSections(item);
     this.engine.setMuteSections(deckId, muteSections);
     const hasStems = item.song.stems_status === 'ready' && item.song.stems.length > 0;
     if (muteSections.length > 0 && hasStems && !this.engine.isInstrumentalLoaded(deckId)) {

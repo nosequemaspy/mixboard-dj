@@ -3,6 +3,14 @@ import { usePlayerStore } from '../store/playerStore';
 import { getPlaybackEngine } from './usePlaybackEngine';
 import { getEffectivePlaybackSettings } from '../types';
 
+/** Extract YouTube thumbnail URL from a song's source_url, or null */
+function getThumbnailUrl(song: { source_url: string | null; source_type: string }): string | null {
+  if (song.source_type !== 'youtube' || !song.source_url) return null;
+  // Match youtube.com/watch?v=ID or youtu.be/ID
+  const match = song.source_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
 // Tiny silent MP3 (1 frame, ~140 bytes) encoded as base64 data URL.
 // Looping this on an <audio> element keeps the browser audio session alive
 // on mobile, preventing the AudioContext from being suspended in background.
@@ -56,10 +64,13 @@ export function useMediaSession() {
       ? `${item.song.title} -> ${nextTransitionSongTitle}`
       : item.song.title;
 
+    const thumbnailUrl = getThumbnailUrl(item.song);
+
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
       artist: item.song.artist || 'Unknown Artist',
       album: 'MixBoard DJ',
+      ...(thumbnailUrl ? { artwork: [{ src: thumbnailUrl, sizes: '480x360', type: 'image/jpeg' }] } : {}),
     });
   }, [currentSongId, sessionItems, isTransitioning, nextTransitionSongTitle]);
 
