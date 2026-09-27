@@ -159,7 +159,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
     // Tag/folder items sorted by folder_position
     return sessionItems
-      .filter(i => i.folder_id === activeTagId && i.song && !i.separator_text)
+      .filter(i => (i.folder_ids ?? []).includes(activeTagId) && i.song && !i.separator_text)
       .sort((a, b) => (a.folder_position ?? 0) - (b.folder_position ?? 0));
   },
 
@@ -171,7 +171,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         .sort((a, b) => a.position - b.position);
     }
     return sessionItems
-      .filter(i => i.folder_id === activeTagId && ((i.song && !i.separator_text) || i.separator_text))
+      .filter(i => (i.folder_ids ?? []).includes(activeTagId) && ((i.song && !i.separator_text) || i.separator_text))
       .sort((a, b) => (a.folder_position ?? 0) - (b.folder_position ?? 0));
   },
 

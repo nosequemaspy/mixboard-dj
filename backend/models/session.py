@@ -59,6 +59,7 @@ class SessionItem(Base):
     position = Column(Integer, nullable=False, default=0)
     folder_id = Column(Integer, ForeignKey("session_folders.id", ondelete="SET NULL"), nullable=True)
     folder_position = Column(Integer, nullable=True)
+    folder_ids = Column(Text, nullable=True)  # JSON array of folder IDs, e.g. "[1,3,5]"
     is_played = Column(Boolean, default=False)
     played_at = Column(DateTime, nullable=True)
     added_by = Column(String(200), default="dj")

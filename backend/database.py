@@ -53,6 +53,13 @@ def _migrate(engine_):
                 ]:
                     if col_name not in cols:
                         conn.execute(text(f"ALTER TABLE session_items ADD COLUMN {col_name} {col_type}"))
+                # Add folder_ids column and backfill from folder_id
+                if "folder_ids" not in cols:
+                    conn.execute(text("ALTER TABLE session_items ADD COLUMN folder_ids TEXT"))
+                    conn.execute(text(
+                        "UPDATE session_items SET folder_ids = "
+                        "CASE WHEN folder_id IS NOT NULL THEN '[' || folder_id || ']' ELSE '[]' END"
+                    ))
                 conn.commit()
             # --- songs table migrations ---
             if "songs" in insp.get_table_names():

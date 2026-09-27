@@ -131,9 +131,8 @@ export function SessionSongEditor() {
 
   const currentItem = sessionItems.find(i => i.id === currentItemId);
   const song = currentItem?.song;
-  const itemFolder = currentItem?.folder_id
-    ? folders.find(f => f.id === currentItem.folder_id)
-    : null;
+  const itemFolderIds = currentItem?.folder_ids ?? [];
+  const itemFolders = folders.filter(f => itemFolderIds.includes(f.id));
 
   // Memoize mute/cut sections to avoid new-array-every-render
   const existingMuteSectionsJson = currentItem?.mute_sections ?? '';
@@ -948,7 +947,8 @@ export function SessionSongEditor() {
     } catch (err: any) {
       console.error('Failed to assign folder:', err);
     }
-    setShowFolderPicker(false);
+    // Only close on "Sin etiqueta" (clear all)
+    if (folderId === null) setShowFolderPicker(false);
   };
 
   const handleCreateFolder = async () => {
@@ -1022,36 +1022,55 @@ export function SessionSongEditor() {
           <button
             onClick={() => setShowFolderPicker(!showFolderPicker)}
             className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-bg-hover transition-colors"
-            title={itemFolder ? itemFolder.name : 'Sin etiqueta'}
+            title={itemFolders.length > 0 ? itemFolders.map(f => f.name).join(', ') : 'Sin etiqueta'}
           >
-            <span className="w-2.5 h-2.5 rounded-full border border-white/20"
-              style={{ backgroundColor: itemFolder?.color ?? '#4b5563' }} />
+            {itemFolders.length > 0 ? (
+              <span className="flex items-center gap-0.5">
+                {itemFolders.map(f => (
+                  <span key={f.id} className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: f.color }} />
+                ))}
+              </span>
+            ) : (
+              <span className="w-2.5 h-2.5 rounded-full border border-white/20" style={{ backgroundColor: '#4b5563' }} />
+            )}
             <span className="text-[9px] text-text-muted max-w-[60px] truncate">
-              {itemFolder?.name ?? 'Etiqueta'}
+              {itemFolders.length > 0 ? itemFolders.map(f => f.name).join(', ') : 'Etiqueta'}
             </span>
           </button>
           {showFolderPicker && (
             <div className="absolute top-full left-0 mt-1 w-44 bg-bg-secondary border border-border rounded-lg shadow-xl z-50 py-1">
               <button
-                onClick={() => handleAssignFolder(null)}
+                onClick={() => { handleAssignFolder(null); }}
                 className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
-                  !itemFolder ? 'text-accent font-medium' : 'text-text-secondary'
+                  itemFolders.length === 0 ? 'text-accent font-medium' : 'text-text-secondary'
                 }`}
               >
                 <span className="w-2.5 h-2.5 rounded-full border border-border/60 bg-bg-tertiary" />
                 Sin etiqueta
               </button>
-              {folders.map(f => (
-                <button key={f.id}
-                  onClick={() => handleAssignFolder(f.id)}
-                  className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
-                    currentItem.folder_id === f.id ? 'text-accent font-medium' : 'text-text-secondary'
-                  }`}
-                >
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                  <span className="truncate">{f.name}</span>
-                </button>
-              ))}
+              {folders.map(f => {
+                const isChecked = itemFolderIds.includes(f.id);
+                return (
+                  <button key={f.id}
+                    onClick={() => handleAssignFolder(f.id)}
+                    className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-bg-hover transition-colors flex items-center gap-2 ${
+                      isChecked ? 'text-accent font-medium' : 'text-text-secondary'
+                    }`}
+                  >
+                    <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
+                      isChecked ? 'border-accent' : 'border-text-muted/40'
+                    }`} style={isChecked ? { borderColor: f.color, backgroundColor: `${f.color}30` } : undefined}>
+                      {isChecked && (
+                        <svg width="8" height="8" viewBox="0 0 16 16" fill={f.color}>
+                          <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+                        </svg>
+                      )}
+                    </span>
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                    <span className="truncate">{f.name}</span>
+                  </button>
+                );
+              })}
               <div className="border-t border-border/40 mt-1 pt-1">
                 {!creatingFolder ? (
                   <button

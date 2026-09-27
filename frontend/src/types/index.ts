@@ -171,6 +171,7 @@ export interface SessionItem {
   position: number;
   folder_id: number | null;
   folder_position: number | null;
+  folder_ids: number[];
   is_played: boolean;
   played_at: string | null;
   added_by: string;

@@ -29,9 +29,9 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function FolderDropdown({ folders, currentFolderId, onAssign }: {
+function FolderDropdown({ folders, currentFolderIds, onAssign }: {
   folders: SessionFolder[];
-  currentFolderId: number | null;
+  currentFolderIds: number[];
   onAssign: (folderId: number | null) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -46,64 +46,73 @@ function FolderDropdown({ folders, currentFolderId, onAssign }: {
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
 
-  const currentFolder = currentFolderId ? folders.find(f => f.id === currentFolderId) : null;
+  const activeFolders = folders.filter(f => currentFolderIds.includes(f.id));
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={e => { e.stopPropagation(); setOpen(!open); }}
         className={`text-xs px-1.5 py-1 min-w-[28px] min-h-[28px] flex items-center justify-center rounded transition-colors ${
-          currentFolder
+          activeFolders.length > 0
             ? 'hover:brightness-125'
             : 'bg-bg-tertiary/50 text-text-muted hover:text-text-primary'
         }`}
-        style={currentFolder ? { backgroundColor: `${currentFolder.color}25`, color: currentFolder.color } : undefined}
+        style={activeFolders.length === 1 ? { backgroundColor: `${activeFolders[0].color}25`, color: activeFolders[0].color } : undefined}
         title="Asignar etiqueta"
       >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-          <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
-        </svg>
+        {activeFolders.length > 1 ? (
+          <span className="flex items-center gap-0.5">
+            {activeFolders.map(f => (
+              <span key={f.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />
+            ))}
+          </span>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4.5A1.5 1.5 0 013.5 3h2.379a1.5 1.5 0 011.06.44l.622.62a1.5 1.5 0 001.06.44H12.5A1.5 1.5 0 0114 6v5.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 11.5v-7z" stroke="currentColor" strokeWidth="1.3"/>
+          </svg>
+        )}
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-40 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[150px]">
           <button
             onClick={() => { onAssign(null); setOpen(false); }}
             className={`w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover/80 flex items-center gap-2 transition-colors ${
-              currentFolderId === null ? 'text-accent' : 'text-text-primary'
+              currentFolderIds.length === 0 ? 'text-accent' : 'text-text-primary'
             }`}
           >
-            {currentFolderId === null && (
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-              </svg>
-            )}
-            <span className={currentFolderId === null ? '' : 'ml-[18px]'}>Sin etiqueta</span>
+            <span className="ml-[18px]">Sin etiqueta</span>
           </button>
           {folders.length > 0 && <div className="mx-2 my-0.5 border-t border-border/30" />}
-          {folders.map(f => (
-            <button
-              key={f.id}
-              onClick={() => { onAssign(f.id); setOpen(false); }}
-              className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
-                currentFolderId === f.id ? '' : 'text-text-primary'
-              }`}
-              style={{
-                color: currentFolderId === f.id ? f.color : undefined,
-                backgroundColor: currentFolderId === f.id ? `${f.color}10` : undefined,
-              }}
-              onMouseEnter={e => { if (currentFolderId !== f.id) (e.currentTarget.style.backgroundColor = `${f.color}0d`); }}
-              onMouseLeave={e => { if (currentFolderId !== f.id) (e.currentTarget.style.backgroundColor = ''); }}
-            >
-              {currentFolderId === f.id ? (
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-                </svg>
-              ) : (
+          {folders.map(f => {
+            const isChecked = currentFolderIds.includes(f.id);
+            return (
+              <button
+                key={f.id}
+                onClick={() => { onAssign(f.id); }}
+                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                  isChecked ? '' : 'text-text-primary'
+                }`}
+                style={{
+                  color: isChecked ? f.color : undefined,
+                  backgroundColor: isChecked ? `${f.color}10` : undefined,
+                }}
+                onMouseEnter={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = `${f.color}0d`); }}
+                onMouseLeave={e => { if (!isChecked) (e.currentTarget.style.backgroundColor = ''); }}
+              >
+                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
+                  isChecked ? 'border-current' : 'border-text-muted/40'
+                }`} style={isChecked ? { borderColor: f.color, backgroundColor: `${f.color}30` } : undefined}>
+                  {isChecked && (
+                    <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
+                    </svg>
+                  )}
+                </span>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-              )}
-              {f.name}
-            </button>
-          ))}
+                {f.name}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -326,7 +335,7 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
         {/* Folder assign */}
         <FolderDropdown
           folders={folders}
-          currentFolderId={item.folder_id}
+          currentFolderIds={item.folder_ids ?? []}
           onAssign={(folderId) => onAssignFolder(item.id, folderId)}
         />
 

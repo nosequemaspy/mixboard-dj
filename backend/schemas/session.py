@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, Literal
+import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from schemas.song import SongBrief
 
@@ -58,6 +59,7 @@ class SessionItemResponse(BaseModel):
     position: int
     folder_id: Optional[int] = None
     folder_position: Optional[int] = None
+    folder_ids: list[int] = []
     is_played: bool
     played_at: Optional[datetime]
     added_by: str
@@ -72,6 +74,35 @@ class SessionItemResponse(BaseModel):
     song: SongBrief
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_folder_ids(cls, data: any) -> any:
+        """Parse folder_ids from JSON string to list."""
+        if hasattr(data, "folder_ids"):
+            raw = data.folder_ids
+        elif isinstance(data, dict):
+            raw = data.get("folder_ids")
+        else:
+            return data
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                if hasattr(data, "__dict__"):
+                    data.folder_ids = parsed
+                else:
+                    data["folder_ids"] = parsed
+            except (json.JSONDecodeError, TypeError):
+                if hasattr(data, "__dict__"):
+                    data.folder_ids = []
+                else:
+                    data["folder_ids"] = []
+        elif raw is None:
+            if hasattr(data, "__dict__"):
+                data.folder_ids = []
+            else:
+                data["folder_ids"] = []
+        return data
 
 
 class SuggestionResponse(BaseModel):

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session, joinedload
@@ -258,12 +259,20 @@ def duplicate_session(
     for item in original.items:
         if item.song is None:
             continue
+        # Remap folder_ids to new folder IDs
+        try:
+            old_fids = json.loads(item.folder_ids) if item.folder_ids else []
+        except (json.JSONDecodeError, TypeError):
+            old_fids = []
+        new_fids = [folder_map[fid] for fid in old_fids if fid in folder_map]
+
         new_item = SessionItem(
             session_id=new_session.id,
             song_id=item.song_id,
             position=item.position,
             folder_id=folder_map.get(item.folder_id) if item.folder_id else None,
             folder_position=item.folder_position,
+            folder_ids=json.dumps(new_fids),
             is_played=False,
             added_by=item.added_by,
             notes=item.notes,
@@ -575,6 +584,18 @@ def delete_folder(
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
 
+    # Remove this folder from folder_ids JSON of all items
+    items_in_session = db.query(SessionItem).filter(SessionItem.session_id == session_id).all()
+    for it in items_in_session:
+        try:
+            fids = json.loads(it.folder_ids) if it.folder_ids else []
+        except (json.JSONDecodeError, TypeError):
+            fids = []
+        if folder_id in fids:
+            fids.remove(folder_id)
+            it.folder_ids = json.dumps(fids)
+            it.folder_id = fids[0] if fids else None
+
     # Items with this folder_id will have folder_id set to NULL by ondelete="SET NULL"
     db.delete(folder)
     db.commit()
@@ -601,20 +622,38 @@ def assign_item_folder(
         raise HTTPException(status_code=404, detail="Item not found")
 
     folder_id = data.get("folder_id")
+
+    # Parse current folder_ids
+    try:
+        current_ids = json.loads(item.folder_ids) if item.folder_ids else []
+    except (json.JSONDecodeError, TypeError):
+        current_ids = []
+
     if folder_id is not None:
+        # Toggle: add or remove folder from list
         folder = db.query(SessionFolder).filter(
             SessionFolder.id == folder_id, SessionFolder.session_id == session_id
         ).first()
         if not folder:
             raise HTTPException(status_code=404, detail="Folder not found")
-        # Set folder_position to end of folder
-        max_pos = db.query(SessionItem).filter(
-            SessionItem.folder_id == folder_id
-        ).count()
-        item.folder_id = folder_id
-        item.folder_position = max_pos
+
+        if folder_id in current_ids:
+            current_ids.remove(folder_id)
+        else:
+            current_ids.append(folder_id)
+            # Set folder_position to end of folder
+            count = sum(1 for i in db.query(SessionItem).filter(
+                SessionItem.session_id == session_id
+            ).all() if folder_id in (json.loads(i.folder_ids) if i.folder_ids else []))
+            item.folder_position = count
     else:
-        item.folder_id = None
+        # Clear all folders
+        current_ids = []
+
+    item.folder_ids = json.dumps(current_ids)
+    # Legacy: folder_id = first element or None
+    item.folder_id = current_ids[0] if current_ids else None
+    if not current_ids:
         item.folder_position = None
 
     db.commit()
@@ -634,11 +673,25 @@ def reorder_folder_items(
         raise HTTPException(status_code=404, detail="Session not found")
     _check_password(session, x_session_password)
 
+    # Load all items in this session and filter by folder_ids JSON
+    all_items = db.query(SessionItem).filter(
+        SessionItem.session_id == session_id
+    ).all()
+    folder_item_ids = set()
+    for it in all_items:
+        try:
+            ids = json.loads(it.folder_ids) if it.folder_ids else []
+        except (json.JSONDecodeError, TypeError):
+            ids = []
+        if folder_id in ids:
+            folder_item_ids.add(it.id)
+
     for position, item_id in enumerate(item_ids):
+        if item_id not in folder_item_ids:
+            continue
         item = db.query(SessionItem).filter(
             SessionItem.id == item_id,
             SessionItem.session_id == session_id,
-            SessionItem.folder_id == folder_id,
         ).first()
         if item:
             item.folder_position = position
