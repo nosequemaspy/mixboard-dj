@@ -478,6 +478,11 @@ export function SessionSongList({
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Clear search when navigating to a different folder
+  useEffect(() => {
+    setSearch('');
+  }, [activeFolder]);
+
   const currentItemId = usePlayerStore(s => s.currentItemId);
   const restrictedMode = usePlayerStore(s => s.restrictedMode);
   const queue = usePlayerStore(s => s.queue);

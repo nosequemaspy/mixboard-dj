@@ -269,6 +269,9 @@ export function SessionDetail({ session, password, onUpdate, onAddSong, onDuplic
     const newOrder = position === 'start' ? [itemId, ...otherIds] : [...otherIds, itemId];
 
     await api.reorderFolderItems(session.id, folderId, newOrder, password);
+
+    // Navigate to the folder so the user sees the result
+    setActiveFolder(folderId);
     onUpdate();
   };
 
