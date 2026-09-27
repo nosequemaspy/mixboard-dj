@@ -125,7 +125,7 @@ export class PlaybackEngine {
         const effectiveEnd = config.endTime ?? this.currentDuration;
         const transitionPoint = effectiveEnd - config.transitionDuration;
 
-        if (effectiveEnd > 0 && time >= transitionPoint && !this.pendingLoad) {
+        if (effectiveEnd > 0 && time >= transitionPoint && time < effectiveEnd && !this.pendingLoad && !this.editorCutSections) {
           this.beginTransition();
         }
       }
