@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { useOfflineStore } from '../../store/offlineStore';
 import { QueueSection } from './QueueSection';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import type { SessionItem, SessionFolder } from '../../types';
@@ -29,7 +30,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove, isSelected, onSelect, downloadMode, isCheckedForDownload, onToggleDownload }: {
+function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove, isSelected, onSelect, downloadMode, isCheckedForDownload, onToggleDownload, isCached }: {
   item: SessionItem;
   isPlayed: boolean;
   isCurrent: boolean;
@@ -52,6 +53,7 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   downloadMode?: boolean;
   isCheckedForDownload?: boolean;
   onToggleDownload?: (itemId: number) => void;
+  isCached?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
   const style = {
@@ -266,22 +268,27 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
           </svg>
         </button>
 
-        {/* Tag dots */}
-        {(() => {
-          const itemFolders = folders.filter(f => (item.folder_ids ?? []).includes(f.id));
-          return itemFolders.length > 0 ? (
-            <span className="flex items-center gap-0.5 shrink-0">
-              {itemFolders.map(f => (
-                <span
-                  key={f.id}
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: f.color, boxShadow: `0 0 4px ${f.color}40` }}
-                  title={f.name}
-                />
-              ))}
-            </span>
-          ) : null;
-        })()}
+        {/* Cache indicator + Tag dots */}
+        <span className="flex items-center gap-0.5 shrink-0">
+          {isCached && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0"
+              style={{ boxShadow: '0 0 4px rgba(74,222,128,0.4)' }}
+              title="Disponible offline"
+            />
+          )}
+          {(() => {
+            const itemFolders = folders.filter(f => (item.folder_ids ?? []).includes(f.id));
+            return itemFolders.map(f => (
+              <span
+                key={f.id}
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: f.color, boxShadow: `0 0 4px ${f.color}40` }}
+                title={f.name}
+              />
+            ));
+          })()}
+        </span>
 
         {/* Add to queue */}
         <button
@@ -334,6 +341,11 @@ export function PlayerPlaylist() {
   const [downloadMode, setDownloadMode] = useState(false);
   const [selectedForDownload, setSelectedForDownload] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [offlineMenuOpen, setOfflineMenuOpen] = useState(false);
+  const offlineMenuRef = useRef<HTMLDivElement>(null);
+  const cachedSessions = useOfflineStore(s => s.cachedSessions);
+  const activeDownload = useOfflineStore(s => s.activeDownload);
+  const cachedSongIds = useOfflineStore(s => s.getCachedSongIds());
 
   useEffect(() => {
     if (creatingTag && tagInputRef.current) tagInputRef.current.focus();
@@ -353,6 +365,16 @@ export function PlayerPlaylist() {
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [tagPopup]);
+
+  // Close offline menu on click outside
+  useEffect(() => {
+    if (!offlineMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (offlineMenuRef.current && !offlineMenuRef.current.contains(e.target as Node)) setOfflineMenuOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [offlineMenuOpen]);
 
   const filteredItems = usePlayerStore.getState().getFilteredItems();
   const allItemsWithSeparators = usePlayerStore.getState().getAllItemsWithSeparators();
@@ -833,9 +855,94 @@ export function PlayerPlaylist() {
             Acumulado: {formatDuration(accumulatedTime)}
           </span>
         )}
+        {/* Offline cache button */}
+        <div className="ml-auto relative" ref={offlineMenuRef}>
+          <button
+            onClick={() => setOfflineMenuOpen(!offlineMenuOpen)}
+            className={`p-1.5 rounded transition-colors ${
+              sessionId && cachedSessions[sessionId]
+                ? 'text-green-400 hover:text-green-300'
+                : activeDownload
+                  ? 'text-blue-400 animate-pulse'
+                  : 'text-text-muted hover:text-accent'
+            }`}
+            title={sessionId && cachedSessions[sessionId] ? 'Sesion disponible offline' : 'Descargar para offline'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              {sessionId && cachedSessions[sessionId] ? (
+                <path d="M9 12l2 2 4-4" strokeWidth="2"/>
+              ) : (
+                <>
+                  <line x1="12" y1="13" x2="12" y2="17"/>
+                  <polyline points="9 15 12 18 15 15"/>
+                </>
+              )}
+            </svg>
+          </button>
+          {offlineMenuOpen && sessionId && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-bg-secondary/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl py-1 min-w-[220px]">
+              <button
+                onClick={() => {
+                  useOfflineStore.getState().downloadSession(sessionId);
+                  setOfflineMenuOpen(false);
+                }}
+                disabled={!!activeDownload}
+                className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2 disabled:opacity-40"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Descargar sesion completa
+              </button>
+              {activeTagId !== null && (() => {
+                const folder = folders.find(f => f.id === activeTagId);
+                return folder ? (
+                  <button
+                    onClick={() => {
+                      useOfflineStore.getState().downloadSession(sessionId, activeTagId);
+                      setOfflineMenuOpen(false);
+                    }}
+                    disabled={!!activeDownload}
+                    className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-hover transition-colors flex items-center gap-2 disabled:opacity-40"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: folder.color }} />
+                    Descargar {folder.name}
+                  </button>
+                ) : null;
+              })()}
+              {cachedSessions[sessionId] && (
+                <>
+                  <div className="mx-2 my-0.5 border-t border-border/30" />
+                  <div className="px-3 py-1.5 text-[10px] text-text-muted">
+                    {cachedSessions[sessionId].cachedSongIds.length} canciones en cache
+                    <span className="ml-1">({(cachedSessions[sessionId].cacheSize / 1024 / 1024).toFixed(0)} MB)</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      useOfflineStore.getState().clearSessionCache(sessionId);
+                      setOfflineMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-bg-hover transition-colors flex items-center gap-2"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                      <line x1="4" y1="4" x2="12" y2="12" />
+                      <line x1="12" y1="4" x2="4" y2="12" />
+                    </svg>
+                    Limpiar cache
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* File download button */}
         <button
           onClick={() => { setDownloadMode(!downloadMode); if (downloadMode) setSelectedForDownload(new Set()); }}
-          className={`ml-auto p-1.5 rounded transition-colors ${
+          className={`p-1.5 rounded transition-colors ${
             downloadMode ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-accent'
           }`}
           title={downloadMode ? 'Salir de modo descarga' : 'Descargar canciones'}
@@ -924,6 +1031,7 @@ export function PlayerPlaylist() {
                       downloadMode={downloadMode}
                       isCheckedForDownload={selectedForDownload.has(item.id)}
                       onToggleDownload={handleToggleDownload}
+                      isCached={cachedSongIds.has(item.song_id)}
                     />
                   );
                 })}

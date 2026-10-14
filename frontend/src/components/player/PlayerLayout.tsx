@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { useOfflineStore } from '../../store/offlineStore';
 import { usePlaybackEngine } from '../../hooks/usePlaybackEngine';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRemoteControl } from '../../hooks/useRemoteControl';
@@ -10,6 +11,7 @@ import { NowPlaying } from './NowPlaying';
 import { PlayerControls } from './PlayerControls';
 import { PlayerPlaylist } from './PlayerPlaylist';
 import { SessionSongEditor } from './SessionSongEditor';
+import { OfflineDownloadBar } from './OfflineDownloadBar';
 import { InstallPrompt } from '../shared/InstallPrompt';
 
 export function PlayerLayout() {
@@ -25,16 +27,20 @@ export function PlayerLayout() {
   const currentItemId = usePlayerStore(s => s.currentItemId);
   const isTransitioning = usePlayerStore(s => s.isTransitioning);
   const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
+  const isOnline = useOfflineStore(s => s.isOnline);
+  const activeDownload = useOfflineStore(s => s.activeDownload);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
 
   // Remote control: this is the HOST (plays audio)
   useRemoteControl(playerSessionId, 'host');
   useMediaSession();
 
-  // Fetch sessions on mount
+  // Fetch sessions on mount + init online status
   useEffect(() => {
     useSessionStore.getState().fetchSessions();
     useSessionStore.getState().restoreLastSession();
+    const cleanup = useOfflineStore.getState().initOnlineStatus();
+    return cleanup;
   }, []);
 
   // Sync player store when session data loads/changes
@@ -77,6 +83,13 @@ export function PlayerLayout() {
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
+
+        {/* Offline badge */}
+        {!isOnline && (
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 animate-pulse">
+            Offline
+          </span>
+        )}
 
         {/* Restricted / Editable mode toggle */}
         <button
@@ -154,6 +167,9 @@ export function PlayerLayout() {
               </span>
             </div>
           )}
+
+          {/* Offline download progress bar */}
+          {activeDownload && <OfflineDownloadBar />}
 
           {/* Controls (always visible) */}
           <div className="flex-shrink-0 border-b border-border bg-bg-secondary">
