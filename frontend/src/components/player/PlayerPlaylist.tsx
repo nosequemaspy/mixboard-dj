@@ -29,7 +29,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove, isSelected, onSelect }: {
+function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders, restrictedMode, totalItems, isFirst, isLast, onPlay, onAddToQueue, onSetSeparator, onMoveUp, onMoveDown, onMoveToPosition, onRemove, isSelected, onSelect, downloadMode, isCheckedForDownload, onToggleDownload }: {
   item: SessionItem;
   isPlayed: boolean;
   isCurrent: boolean;
@@ -49,6 +49,9 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   onRemove: (itemId: number) => void;
   isSelected?: boolean;
   onSelect?: (itemId: number) => void;
+  downloadMode?: boolean;
+  isCheckedForDownload?: boolean;
+  onToggleDownload?: (itemId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.id });
   const style = {
@@ -82,19 +85,36 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        onClick={() => onSelect?.(item.id)}
+        onClick={() => downloadMode ? onToggleDownload?.(item.id) : onSelect?.(item.id)}
         className={`flex items-center gap-1.5 px-2 py-2 transition-colors group/row cursor-pointer ${
-          isCurrent
-            ? 'bg-accent/10'
-            : isSelected
-              ? 'bg-accent/5 ring-1 ring-inset ring-accent/40'
-              : isNext
-                ? 'bg-accent/5 border-l-2 border-l-accent/40'
-                : 'hover:bg-bg-tertiary'
+          downloadMode && isCheckedForDownload
+            ? 'bg-accent/10 ring-1 ring-inset ring-accent/40'
+            : isCurrent
+              ? 'bg-accent/10'
+              : isSelected
+                ? 'bg-accent/5 ring-1 ring-inset ring-accent/40'
+                : isNext
+                  ? 'bg-accent/5 border-l-2 border-l-accent/40'
+                  : 'hover:bg-bg-tertiary'
         }`}
       >
+        {/* Download checkbox */}
+        {downloadMode && (
+          <div className="flex-shrink-0 flex items-center justify-center w-5">
+            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+              isCheckedForDownload ? 'bg-accent border-accent' : 'border-text-muted/40'
+            }`}>
+              {isCheckedForDownload && (
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                  <path d="M3.5 8.5l3 3 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Drag handle — only in editable mode */}
-        {!restrictedMode && (
+        {!restrictedMode && !downloadMode && (
           <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-text-muted/40 hover:text-text-muted px-1 flex-shrink-0 touch-none">
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
               <circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/>
@@ -105,7 +125,7 @@ function SortableSongRow({ item, isPlayed, isCurrent, isNext, songIndex, folders
         )}
 
         {/* Up/Down arrows — only in editable mode */}
-        {!restrictedMode && (
+        {!restrictedMode && !downloadMode && (
           <div className="flex flex-col gap-0 sm:opacity-0 sm:group-hover/row:opacity-100 transition-opacity">
             <button
               onClick={() => onMoveUp(item.id)}
@@ -311,10 +331,18 @@ export function PlayerPlaylist() {
   const [tagPopup, setTagPopup] = useState<{ folderId: number; rect: DOMRect } | null>(null);
   const tagPopupRef = useRef<HTMLDivElement>(null);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [downloadMode, setDownloadMode] = useState(false);
+  const [selectedForDownload, setSelectedForDownload] = useState<Set<number>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (creatingTag && tagInputRef.current) tagInputRef.current.focus();
   }, [creatingTag]);
+
+  // Clear download selection when tag changes
+  useEffect(() => {
+    setSelectedForDownload(new Set());
+  }, [activeTagId]);
 
   // Close tag popup on click outside
   useEffect(() => {
@@ -599,6 +627,56 @@ export function PlayerPlaylist() {
     } catch { /* ignore */ }
   };
 
+  const handleToggleDownload = (itemId: number) => {
+    setSelectedForDownload(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const handleSelectAllForDownload = () => {
+    setSelectedForDownload(new Set(filteredItems.map(i => i.id)));
+  };
+
+  const handleDeselectAllForDownload = () => {
+    setSelectedForDownload(new Set());
+  };
+
+  const handleDownloadSelected = async () => {
+    const selectedIds = Array.from(selectedForDownload);
+    if (selectedIds.length === 0) return;
+
+    // Map item IDs to song IDs
+    const songIds = selectedIds
+      .map(itemId => filteredItems.find(i => i.id === itemId)?.song_id)
+      .filter((id): id is number => id != null);
+
+    if (songIds.length === 0) return;
+
+    if (songIds.length === 1) {
+      // Direct download
+      const a = document.createElement('a');
+      a.href = api.downloadUrl(songIds[0]);
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
+    // Multi download as ZIP
+    setIsExporting(true);
+    try {
+      await api.exportSongs(songIds);
+    } catch {
+      /* ignore */
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const playedCount = filteredItems.filter(i => playedSongIds.has(i.song_id)).length;
 
   // Build a song index lookup from filteredItems for display numbering
@@ -755,6 +833,19 @@ export function PlayerPlaylist() {
             Acumulado: {formatDuration(accumulatedTime)}
           </span>
         )}
+        <button
+          onClick={() => { setDownloadMode(!downloadMode); if (downloadMode) setSelectedForDownload(new Set()); }}
+          className={`ml-auto p-1.5 rounded transition-colors ${
+            downloadMode ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-accent'
+          }`}
+          title={downloadMode ? 'Salir de modo descarga' : 'Descargar canciones'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
       </div>
 
       {/* Queue */}
@@ -830,6 +921,9 @@ export function PlayerPlaylist() {
                       onRemove={handleRemoveItem}
                       isSelected={item.id === selectedItemId}
                       onSelect={setSelectedItemId}
+                      downloadMode={downloadMode}
+                      isCheckedForDownload={selectedForDownload.has(item.id)}
+                      onToggleDownload={handleToggleDownload}
                     />
                   );
                 })}
@@ -838,6 +932,52 @@ export function PlayerPlaylist() {
           </DndContext>
         )}
       </div>
+
+      {/* Download toolbar */}
+      {downloadMode && (
+        <div className="px-3 py-2 border-t border-border bg-bg-secondary flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleSelectAllForDownload}
+            className="text-xs px-2 py-1.5 rounded bg-bg-tertiary text-text-secondary hover:bg-bg-hover transition-colors whitespace-nowrap"
+          >
+            {activeTagId !== null
+              ? `Seleccionar ${folders.find(f => f.id === activeTagId)?.name ?? 'etiqueta'}`
+              : 'Seleccionar todo'}
+          </button>
+          <button
+            onClick={handleDeselectAllForDownload}
+            className="text-xs px-2 py-1.5 rounded bg-bg-tertiary text-text-secondary hover:bg-bg-hover transition-colors whitespace-nowrap"
+          >
+            Deseleccionar
+          </button>
+          <span className="text-xs text-text-muted tabular-nums">
+            {selectedForDownload.size} seleccionada{selectedForDownload.size !== 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={handleDownloadSelected}
+            disabled={selectedForDownload.size === 0 || isExporting}
+            className="ml-auto text-xs px-3 py-1.5 rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-40 disabled:cursor-default transition-colors font-medium flex items-center gap-1.5 whitespace-nowrap"
+          >
+            {isExporting ? (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="animate-spin">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round"/>
+                </svg>
+                Exportando...
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Descargar{selectedForDownload.size > 1 ? ` (${selectedForDownload.size})` : ''}
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Confirmation dialog for restricted mode */}
       <ConfirmDialog

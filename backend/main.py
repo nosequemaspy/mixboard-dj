@@ -19,6 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def no_cache_api(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 app.include_router(songs.router)
 app.include_router(categories.router)
 app.include_router(stems.router)
@@ -63,6 +70,8 @@ if FRONTEND_DIR.exists():
         # Try serving the exact file first
         file_path = FRONTEND_DIR / full_path
         if full_path and file_path.exists() and file_path.is_file():
+            if full_path == "sw.js":
+                return FileResponse(file_path, headers={"Cache-Control": "no-store"})
             return FileResponse(file_path)
         # Otherwise serve index.html (SPA routing) — no-cache so browser always gets latest
         return FileResponse(

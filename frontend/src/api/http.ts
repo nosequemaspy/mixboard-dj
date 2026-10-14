@@ -3,6 +3,7 @@ const API_BASE = '/api';
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const { headers: optHeaders, ...restOptions } = options || {};
   const res = await fetch(`${API_BASE}${path}`, {
+    cache: 'no-store',
     ...restOptions,
     headers: { 'Content-Type': 'application/json', ...(optHeaders as Record<string, string>) },
   });
