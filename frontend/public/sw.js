@@ -28,6 +28,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Session list → network-first, fallback to offline cache
+  if (url.pathname === '/api/sessions' && event.request.method === 'GET') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Cache successful response for offline use
+          const clone = response.clone();
+          caches.open(OFFLINE_CACHE).then(cache =>
+            cache.put(new Request('/api/sessions'), clone)
+          );
+          return response;
+        })
+        .catch(() =>
+          caches.open(OFFLINE_CACHE).then(cache =>
+            cache.match(new Request('/api/sessions'))
+          ).then(cached =>
+            cached || new Response(JSON.stringify([]), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          )
+        )
+    );
+    return;
+  }
+
   // Session data → network-first, fallback to offline cache
   if (url.pathname.match(/^\/api\/sessions\/\d+$/)) {
     event.respondWith(
@@ -36,6 +62,11 @@ self.addEventListener('fetch', (event) => {
         .catch(() =>
           caches.open(OFFLINE_CACHE).then(cache =>
             cache.match(new Request(url.pathname))
+          ).then(cached =>
+            cached || new Response(
+              JSON.stringify({ detail: 'Session not available offline' }),
+              { status: 503, headers: { 'Content-Type': 'application/json' } }
+            )
           )
         )
     );

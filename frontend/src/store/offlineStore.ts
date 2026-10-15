@@ -217,6 +217,19 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
     });
     await cache.put(new Request(sessionUrl), sessionResponse);
 
+    // Also cache the sessions list so session picker works offline
+    try {
+      const sessionsList = await api.getSessions();
+      await cache.put(
+        new Request('/api/sessions'),
+        new Response(JSON.stringify(sessionsList), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    } catch {
+      // Non-critical — session list might already be cached by SW
+    }
+
     // Determine which songs to download
     let items: SessionItem[] = sessionData.items || [];
     if (folderId !== null) {

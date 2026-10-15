@@ -2,6 +2,32 @@ import { create } from 'zustand';
 import type { SessionListItem, SessionData } from '../types';
 import { api } from '../api/http';
 
+const OFFLINE_META_KEY = 'mixboard_offline_sessions';
+
+/** Build a minimal sessions list from offline cache metadata as fallback */
+function getOfflineFallbackSessions(): SessionListItem[] {
+  try {
+    const raw = localStorage.getItem(OFFLINE_META_KEY);
+    if (!raw) return [];
+    const meta: Record<string, { sessionName: string; cachedSongIds: number[] }> = JSON.parse(raw);
+    return Object.entries(meta).map(([id, m]) => ({
+      id: Number(id),
+      name: m.sessionName,
+      share_code: '',
+      has_password: false,
+      is_public: false,
+      allow_suggestions: false,
+      parent_session_id: null,
+      created_at: '',
+      updated_at: '',
+      item_count: m.cachedSongIds.length,
+      pending_suggestions: 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 interface SessionStore {
   sessions: SessionListItem[];
   activeSessionId: number | null;
@@ -63,7 +89,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const sessions = await api.getSessions();
       set({ sessions, loading: false });
     } catch {
-      set({ loading: false });
+      // Offline or network error — show cached sessions from offline metadata
+      const fallback = getOfflineFallbackSessions();
+      set({ sessions: fallback, loading: false });
     }
   },
 
