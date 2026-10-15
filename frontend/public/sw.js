@@ -54,11 +54,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Session data → network-first, fallback to offline cache
+  // Session data → network-first, update offline cache if session already cached, fallback to cache
   if (url.pathname.match(/^\/api\/sessions\/\d+$/)) {
     event.respondWith(
       fetch(event.request)
-        .then(response => response)
+        .then(response => {
+          // Update offline cache so edits/reorders stay synced
+          const clone = response.clone();
+          caches.open(OFFLINE_CACHE).then(cache =>
+            cache.match(new Request(url.pathname)).then(existing => {
+              if (existing) {
+                cache.put(new Request(url.pathname), clone);
+              }
+            })
+          );
+          return response;
+        })
         .catch(() =>
           caches.open(OFFLINE_CACHE).then(cache =>
             cache.match(new Request(url.pathname))

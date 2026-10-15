@@ -45,6 +45,7 @@ interface OfflineStore {
   cancelDownload: () => void;
   clearSessionCache: (sessionId: number) => Promise<void>;
   clearAllCache: () => Promise<void>;
+  evictSong: (songId: number) => Promise<void>;
   isSongCached: (songId: number) => boolean;
   getCachedSongIds: () => Set<number>;
   initOnlineStatus: () => () => void;
@@ -416,6 +417,16 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
     if (activeDownload) {
       activeDownload.abortController.abort();
       set({ activeDownload: null });
+    }
+  },
+
+  evictSong: async (songId: number) => {
+    try {
+      const cache = await caches.open(OFFLINE_CACHE);
+      await cache.delete(new Request(`/api/audio/stream/${songId}`), { ignoreSearch: true });
+      await cache.delete(new Request(`/api/audio/stem-by-type/${songId}/instrumental`), { ignoreSearch: true });
+    } catch {
+      // Cache API unavailable
     }
   },
 

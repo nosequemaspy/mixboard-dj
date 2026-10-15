@@ -8,6 +8,7 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { getPlaybackEngine } from '../../hooks/usePlaybackEngine';
 import { getEffectivePlaybackSettings } from '../../types';
 import type { MuteSection } from '../../types';
+import { useOfflineStore } from '../../store/offlineStore';
 import { api } from '../../api/http';
 
 // --- Clip types (session: keep | mute | cut) ---
@@ -884,7 +885,9 @@ export function SessionSongEditor() {
 
       // --- Reload PlaybackEngine ---
       if (cutSections.length > 0) {
-        // Audio file changed: invalidate so next play reloads from server
+        // Audio file changed: evict from offline cache so SW doesn't serve stale audio
+        useOfflineStore.getState().evictSong(song.id);
+        // Invalidate so next play reloads from server
         getPlaybackEngine().invalidateCurrentSong();
         usePlayerStore.getState().setCurrentTime(0);
         usePlayerStore.getState().setIsPlaying(false);
