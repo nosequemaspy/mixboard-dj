@@ -51,6 +51,7 @@ export class PlaybackEngine {
   private onTimeUpdate: ((time: number) => void) | null = null;
   private onSongEnd: (() => void) | null = null;
   private onSongStart: ((item: SessionItem) => void) | null = null;
+  private onSongLoadFailed: ((item: SessionItem) => void) | null = null;
   private onTransitionChange: ((isTransitioning: boolean, nextSongTitle: string | null) => void) | null = null;
 
   // Current state
@@ -69,11 +70,13 @@ export class PlaybackEngine {
     onTimeUpdate: (time: number) => void;
     onSongEnd: () => void;
     onSongStart: (item: SessionItem) => void;
+    onSongLoadFailed?: (item: SessionItem) => void;
     onTransitionChange?: (isTransitioning: boolean, nextSongTitle: string | null) => void;
   }) {
     this.onTimeUpdate = callbacks.onTimeUpdate;
     this.onSongEnd = callbacks.onSongEnd;
     this.onSongStart = callbacks.onSongStart;
+    this.onSongLoadFailed = callbacks.onSongLoadFailed ?? null;
     this.onTransitionChange = callbacks.onTransitionChange ?? null;
   }
 
@@ -195,7 +198,7 @@ export class PlaybackEngine {
         if (gen !== this.playGeneration) return;
         console.error('Failed to load song:', e);
         this.onTransitionChange?.(false, null);
-        this.onSongEnd?.();
+        this.onSongLoadFailed?.(item) ?? this.onSongEnd?.();
         return;
       }
 
@@ -228,7 +231,7 @@ export class PlaybackEngine {
         if (gen !== this.playGeneration) return;
         console.error('Failed to load song:', e);
         this.onTransitionChange?.(false, null);
-        this.onSongEnd?.();
+        this.onSongLoadFailed?.(item) ?? this.onSongEnd?.();
         return;
       }
 

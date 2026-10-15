@@ -29,6 +29,7 @@ export function PlayerLayout() {
   const nextTransitionSongTitle = usePlayerStore(s => s.nextTransitionSongTitle);
   const isOnline = useOfflineStore(s => s.isOnline);
   const activeDownload = useOfflineStore(s => s.activeDownload);
+  const lastError = useOfflineStore(s => s.lastError);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
 
   // Remote control: this is the HOST (plays audio)
@@ -42,6 +43,13 @@ export function PlayerLayout() {
     const cleanup = useOfflineStore.getState().initOnlineStatus();
     return cleanup;
   }, []);
+
+  // Clear skipped songs when coming back online
+  useEffect(() => {
+    if (isOnline) {
+      usePlayerStore.getState().clearSkippedSongs();
+    }
+  }, [isOnline]);
 
   // Sync player store when session data loads/changes
   useEffect(() => {
@@ -194,6 +202,35 @@ export function PlayerLayout() {
       )}
 
       <InstallPrompt />
+
+      {/* Offline error toast */}
+      {lastError && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-red-600/95 backdrop-blur-sm text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            {lastError.type === 'storage_low' && (
+              <p>Espacio insuficiente. Disponible: {(lastError.available / 1024 / 1024).toFixed(0)} MB, necesario: ~{(lastError.required / 1024 / 1024).toFixed(0)} MB</p>
+            )}
+            {lastError.type === 'storage_full' && (
+              <p>Almacenamiento lleno al descargar "{lastError.songTitle}". Libera espacio o limpia cache.</p>
+            )}
+            {lastError.type === 'download_failed' && (
+              <p>{lastError.message}</p>
+            )}
+            {lastError.type === 'partial_complete' && (
+              <p>{lastError.completed}/{lastError.total} descargadas, {lastError.failed} fallaron</p>
+            )}
+          </div>
+          <button
+            onClick={() => useOfflineStore.getState().clearError()}
+            className="flex-shrink-0 text-white/70 hover:text-white transition-colors p-0.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="4" y1="4" x2="12" y2="12" />
+              <line x1="12" y1="4" x2="4" y2="12" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

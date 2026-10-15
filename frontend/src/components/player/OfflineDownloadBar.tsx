@@ -6,7 +6,7 @@ export function OfflineDownloadBar() {
 
   if (!activeDownload) return null;
 
-  const { completedSongs, totalSongs, currentSongTitle } = activeDownload;
+  const { completedSongs, totalSongs, currentSongTitle, failedSongs } = activeDownload;
   const progress = totalSongs > 0 ? (completedSongs / totalSongs) * 100 : 0;
 
   return (
@@ -26,6 +26,11 @@ export function OfflineDownloadBar() {
           <span className="flex-shrink-0 font-mono text-blue-400">
             ({completedSongs}/{totalSongs})
           </span>
+          {failedSongs > 0 && (
+            <span className="flex-shrink-0 font-mono text-amber-400">
+              {failedSongs} fallida{failedSongs !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
         {/* Progress bar */}
         <div className="mt-1 h-1 bg-blue-500/20 rounded-full overflow-hidden">

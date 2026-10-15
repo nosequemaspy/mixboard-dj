@@ -42,11 +42,27 @@ export function usePlaybackEngine() {
           engine.stop();
         }
       },
+      onSongLoadFailed: (item) => {
+        // Song failed to load (network/offline) — skip without marking as played
+        const state = usePlayerStore.getState();
+        state.skipUnavailableSong(item.song_id);
+        state.setIsLoadingSong(false);
+        state.playNext();
+
+        // If no more songs available, stop
+        if (!usePlayerStore.getState().isPlaying) {
+          usePlayerStore.getState().setIsLoadingSong(false);
+          engine.stop();
+        }
+      },
       onSongStart: (item) => {
         // Audio is loaded and playing — clear loading state
-        usePlayerStore.getState().setIsLoadingSong(false);
+        const state = usePlayerStore.getState();
+        state.setIsLoadingSong(false);
         // Mark the song as played when it starts
-        usePlayerStore.getState().markPlayed(item.song_id);
+        state.markPlayed(item.song_id);
+        // Clear skipped songs — a song loaded successfully, network is working
+        state.clearSkippedSongs();
       },
       onTransitionChange: (isTransitioning, nextSongTitle) => {
         usePlayerStore.getState().setTransitionState(isTransitioning, nextSongTitle);

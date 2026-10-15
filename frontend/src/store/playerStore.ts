@@ -32,6 +32,9 @@ interface PlayerStore {
   // Played tracking (by song_id, not item id)
   playedSongIds: Set<number>;
 
+  // Songs that failed to load (offline/network error) — skipped in getNextItem
+  skippedSongIds: Set<number>;
+
   // Loading state (true while audio is downloading/decoding)
   isLoadingSong: boolean;
   setIsLoadingSong: (loading: boolean) => void;
@@ -63,6 +66,8 @@ interface PlayerStore {
   setActiveTag: (tagId: number | null) => void;
   markPlayed: (songId: number) => void;
   resetAllPlayed: () => void;
+  skipUnavailableSong: (songId: number) => void;
+  clearSkippedSongs: () => void;
   toggleShuffle: () => void;
   getNextItem: () => SessionItem | null;
   getPreviousItem: () => SessionItem | null;
@@ -96,6 +101,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   shuffleEnabled: false,
   shuffledOrder: [],
   playedSongIds: new Set(),
+  skippedSongIds: new Set(),
   isLoadingSong: false,
   isTransitioning: false,
   nextTransitionSongTitle: null,
@@ -190,7 +196,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   getNextItem: () => {
-    const { queue, currentItemId, queueResumeItemId, playedSongIds, shuffleEnabled, shuffledOrder } = get();
+    const { queue, currentItemId, queueResumeItemId, playedSongIds, skippedSongIds, shuffleEnabled, shuffledOrder } = get();
     const filtered = get().getFilteredItems();
 
     // Queue takes priority
@@ -204,6 +210,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const resumeId = queueResumeItemId ?? currentItemId;
     const currentIndex = filtered.findIndex(i => i.id === resumeId);
 
+    const isAvailable = (item: SessionItem) =>
+      !playedSongIds.has(item.song_id) && !skippedSongIds.has(item.song_id);
+
     if (shuffleEnabled && shuffledOrder.length > 0) {
       // Find current position in shuffled order
       const shufflePos = shuffledOrder.indexOf(currentIndex);
@@ -212,22 +221,22 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         const nextShufflePos = (shufflePos + offset) % shuffledOrder.length;
         const nextIndex = shuffledOrder[nextShufflePos];
         const item = filtered[nextIndex];
-        if (item && !playedSongIds.has(item.song_id)) {
+        if (item && isAvailable(item)) {
           return item;
         }
       }
-      return null; // All played
+      return null; // All played or skipped
     }
 
-    // Linear order: find next unplayed
+    // Linear order: find next unplayed & not-skipped
     for (let offset = 1; offset <= filtered.length; offset++) {
       const nextIndex = (currentIndex + offset) % filtered.length;
       const item = filtered[nextIndex];
-      if (item && !playedSongIds.has(item.song_id)) {
+      if (item && isAvailable(item)) {
         return item;
       }
     }
-    return null; // All played
+    return null; // All played or skipped
   },
 
   getPreviousItem: () => {
@@ -368,6 +377,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       const filtered = get().getFilteredItems();
       const indices = filtered.map((_, i) => i);
       set({ shuffledOrder: fisherYatesShuffle(indices) });
+    }
+  },
+
+  skipUnavailableSong: (songId: number) => {
+    const newSkipped = new Set(get().skippedSongIds);
+    newSkipped.add(songId);
+    set({ skippedSongIds: newSkipped });
+  },
+
+  clearSkippedSongs: () => {
+    if (get().skippedSongIds.size > 0) {
+      set({ skippedSongIds: new Set() });
     }
   },
 
