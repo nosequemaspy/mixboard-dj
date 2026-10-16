@@ -124,6 +124,16 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
         case 'reset_played':
           store.resetAllPlayed();
           break;
+        case 'move_queue_item':
+          if (typeof data.fromIndex === 'number' && typeof data.toIndex === 'number') {
+            store.moveQueueItem(data.fromIndex, data.toIndex);
+          }
+          break;
+        case 'remove_from_queue':
+          if (typeof data.index === 'number') {
+            store.removeFromQueue(data.index);
+          }
+          break;
       }
     });
 
@@ -167,6 +177,15 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
       // Sync played songs
       if (data.playedSongIds) {
         usePlayerStore.setState({ playedSongIds: new Set(data.playedSongIds) });
+      }
+
+      // Sync queue from host
+      if (data.queue) {
+        const queueItems = (data.queue as number[])
+          .map((id: number) => store.sessionItems.find(i => i.id === id))
+          .filter(Boolean)
+          .map((item) => ({ item: item!, source: 'manual' as const }));
+        usePlayerStore.setState({ queue: queueItems });
       }
     });
 

@@ -33,6 +33,9 @@ export function RemoteLayout() {
   const sessionItems = usePlayerStore(s => s.sessionItems);
   const activeTagId = usePlayerStore(s => s.activeTagId);
   const folders = usePlayerStore(s => s.folders);
+  const queue = usePlayerStore(s => s.queue);
+
+  const [showQueue, setShowQueue] = useState(true);
 
   // Remote control: this is a REMOTE (sends commands, no audio)
   const { sendCommand } = useRemoteControl(playerSessionId, 'remote');
@@ -275,6 +278,75 @@ export function RemoteLayout() {
               ))}
             </div>
           </div>
+
+          {/* Queue */}
+          {queue.length > 0 && (
+            <div className="border-b border-border flex-shrink-0">
+              <button
+                onClick={() => setShowQueue(!showQueue)}
+                className="w-full flex items-center justify-between px-4 py-2 hover:bg-bg-tertiary/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                    Cola
+                  </h3>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/20 text-accent min-w-[20px] text-center">
+                    {queue.length}
+                  </span>
+                </div>
+                <svg
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className={`text-text-muted transition-transform ${showQueue ? 'rotate-180' : ''}`}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showQueue && (
+                <div className="px-4 pb-2 space-y-1">
+                  {queue.map((entry, index) => (
+                    <div
+                      key={`rq-${entry.item.id}-${index}`}
+                      className="flex items-center justify-between py-2 px-2 rounded-md bg-accent/5"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[10px] font-mono text-text-muted/60 w-4 text-center shrink-0">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-text-primary truncate">{entry.item.song.title}</p>
+                          <p className="text-xs text-text-muted truncate">{entry.item.song.artist}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center flex-shrink-0">
+                        {index > 0 && (
+                          <button
+                            onClick={() => sendCommand('move_queue_item', { fromIndex: index, toIndex: 0 })}
+                            className="p-2 text-text-muted hover:text-accent transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                            title="Mover a primera"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="18 15 12 9 6 15" />
+                              <line x1="6" y1="5" x2="18" y2="5" />
+                            </svg>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => sendCommand('remove_from_queue', { index })}
+                          className="p-2 text-text-muted hover:text-danger transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                          title="Quitar de la cola"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Search */}
           <div className="px-4 py-2 border-b border-border flex-shrink-0">
