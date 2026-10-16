@@ -250,10 +250,13 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
     // ── Storage estimation ──
     // Count how many songs are NOT already cached
     const alreadyCached = get().getCachedSongIds();
-    const newSongsCount = items.filter(i => !alreadyCached.has(i.song_id)).length;
+    const newItems = items.filter(i => !alreadyCached.has(i.song_id));
+    const newSongsCount = newItems.length;
 
     if (newSongsCount > 0) {
-      const estimatedNeeded = newSongsCount * AVG_SONG_SIZE_BYTES;
+      // Count songs with stems to add their extra size
+      const songsWithStems = newItems.filter(i => i.song.stems_status === 'ready' && i.song.stems?.length > 0).length;
+      const estimatedNeeded = (newSongsCount + songsWithStems) * AVG_SONG_SIZE_BYTES;
       const storageInfo = await getStorageEstimate();
       if (storageInfo) {
         const available = storageInfo.quota - storageInfo.usage;
@@ -427,6 +430,21 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
       await cache.delete(new Request(`/api/audio/stem-by-type/${songId}/instrumental`), { ignoreSearch: true });
     } catch {
       // Cache API unavailable
+    }
+
+    // Also remove from metadata so it's not reported as cached
+    const meta = loadMeta();
+    let changed = false;
+    for (const sessionMeta of Object.values(meta)) {
+      const idx = sessionMeta.cachedSongIds.indexOf(songId);
+      if (idx !== -1) {
+        sessionMeta.cachedSongIds.splice(idx, 1);
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveMeta(meta);
+      set({ cachedSessions: { ...meta } });
     }
   },
 

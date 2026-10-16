@@ -136,6 +136,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         sessionItems: items,
         folders,
         playedSongIds: playedIds,
+        skippedSongIds: new Set(),
         activeTagId: null,
         queue: [],
         currentItemId: null,

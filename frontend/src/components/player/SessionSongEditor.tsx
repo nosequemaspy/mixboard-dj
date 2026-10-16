@@ -886,7 +886,7 @@ export function SessionSongEditor() {
       // --- Reload PlaybackEngine ---
       if (cutSections.length > 0) {
         // Audio file changed: evict from offline cache so SW doesn't serve stale audio
-        useOfflineStore.getState().evictSong(song.id);
+        await useOfflineStore.getState().evictSong(song.id);
         // Invalidate so next play reloads from server
         getPlaybackEngine().invalidateCurrentSong();
         usePlayerStore.getState().setCurrentTime(0);
