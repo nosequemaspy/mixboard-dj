@@ -64,6 +64,7 @@ interface PlayerStore {
   addToQueue: (item: SessionItem) => void;
   removeFromQueue: (index: number) => void;
   moveQueueItem: (fromIndex: number, toIndex: number) => void;
+  clearQueue: () => void;
   setActiveTag: (tagId: number | null) => void;
   markPlayed: (songId: number) => void;
   resetAllPlayed: () => void;
@@ -335,6 +336,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       newQueue.splice(toIndex, 0, item);
       return { queue: newQueue };
     });
+  },
+
+  clearQueue: () => {
+    set({ queue: [] });
   },
 
   setActiveTag: (tagId) => {

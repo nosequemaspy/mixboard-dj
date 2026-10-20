@@ -101,9 +101,7 @@ export function QueueSection() {
   };
 
   const handleClearAll = () => {
-    for (let i = queue.length - 1; i >= 0; i--) {
-      usePlayerStore.getState().removeFromQueue(i);
-    }
+    usePlayerStore.getState().clearQueue();
   };
 
   const handleDragEnd = (event: DragEndEvent) => {

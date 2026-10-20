@@ -134,6 +134,9 @@ export function useRemoteControl(sessionId: number | null, role: 'host' | 'remot
             store.removeFromQueue(data.index);
           }
           break;
+        case 'clear_queue':
+          store.clearQueue();
+          break;
       }
     });
 
